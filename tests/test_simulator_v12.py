@@ -271,3 +271,66 @@ class TestStrategyComparisonFairSeed:
         no_hedge = simulate_external_hedge(base_inp(seed="no_h", hedge_fraction=0.0, n_paths=4000))
         full_hedge = simulate_external_hedge(base_inp(seed="no_h", hedge_fraction=1.0, n_paths=4000))
         assert full_hedge.max_loss >= no_hedge.max_loss - 1.0 or full_hedge.cvar_95 >= no_hedge.cvar_95 - 1.0
+
+
+# ---------------------------------------------------------------------------
+# Interactive endpoint acceptance tests
+# ---------------------------------------------------------------------------
+
+from fastapi.testclient import TestClient
+from catalog_app import app
+
+
+class TestInteractiveRiskTransferEndpoint:
+    @staticmethod
+    def _payload(seed="article-seed"):
+        return {
+            "liability_range": [20_000_000, 40_000_000, 80_000_000, 120_000_000],
+            "true_probability": 0.60,
+            "prediction_market_price": 0.58,
+            "liquidity": 12_000_000,
+            "fill_probability": 0.90,
+            "n_paths": 500,
+            "seed": seed,
+            "objective": "min_cvar",
+            "strategy": "external_hedge",
+            "strategy_modes": ["external_hedge", "internal_reprice", "hybrid"],
+        }
+
+    def test_deterministic_endpoint_same_seed_same_curve_points(self):
+        client = TestClient(app)
+        p = self._payload(seed="deterministic-1")
+        r1 = client.post("/api/risk-transfer/interactive", json=p)
+        r2 = client.post("/api/risk-transfer/interactive", json=p)
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        j1 = r1.json()
+        j2 = r2.json()
+        assert j1["curve_points"] == j2["curve_points"]
+
+    def test_metadata_presence(self):
+        client = TestClient(app)
+        r = client.post("/api/risk-transfer/interactive", json=self._payload())
+        assert r.status_code == 200
+        m = r.json()["scenario_metadata"]
+        for k in ("seed", "n_paths", "timestamp_utc", "simulator_version", "source"):
+            assert k in m
+
+    def test_csv_row_consistency_from_curve_points(self):
+        client = TestClient(app)
+        r = client.post("/api/risk-transfer/interactive", json=self._payload())
+        assert r.status_code == 200
+        points = r.json()["curve_points"]
+        rows = [["liability", "hedge_ratio", "ev", "cvar", "max_loss"]]
+        rows.extend([[p["liability"], p["hedge_ratio"], p["ev"], p["cvar"], p["max_loss"]] for p in points])
+        assert len(rows) == len(points) + 1
+        assert rows[0] == ["liability", "hedge_ratio", "ev", "cvar", "max_loss"]
+
+    def test_hedge_ratio_monotonicity_min_cvar(self):
+        client = TestClient(app)
+        r = client.post("/api/risk-transfer/interactive", json=self._payload(seed="mono-seed"))
+        assert r.status_code == 200
+        points = r.json()["curve_points"]
+        ratios = [p["hedge_ratio"] for p in points]
+        for i in range(len(ratios) - 1):
+            assert ratios[i + 1] >= ratios[i] - 1e-9

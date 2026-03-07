@@ -43,6 +43,7 @@ class SimulationInputV12:
     objective: ObjectiveMode = "min_cvar"
     liquidity: Optional[LiquidityModel] = None
     internal_reprice: Optional[InternalRepriceModel] = None
+    cvar_alpha: float = 0.95
 
 
 @dataclass
