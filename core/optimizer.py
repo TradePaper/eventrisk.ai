@@ -28,6 +28,8 @@ def _objective_score(metrics: StrategyMetrics, objective: str) -> float:
         if metrics.ev < 0:
             return float("-inf")
         return metrics.cvar_95
+    if objective == "max_ev":
+        return metrics.ev
     return metrics.cvar_95
 
 

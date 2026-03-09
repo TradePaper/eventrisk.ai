@@ -1,3 +1,4 @@
+from typing import Optional
 """
 Server-side PostHog analytics.
 Falls back to a no-op when POSTHOG_KEY is not set.
@@ -25,7 +26,7 @@ def _fire(event: str, properties: dict, distinct_id: str) -> None:
         _log.debug("posthog capture failed: %s", exc)
 
 
-def capture(event: str, properties: dict | None = None, distinct_id: str = "server") -> None:
+def capture(event: str, properties: Optional[dict] = None, distinct_id: str = "server") -> None:
     """Fire a PostHog event asynchronously. No-op when POSTHOG_KEY is absent."""
     if not _KEY:
         _log.debug("[analytics no-op] %s %s", event, properties)
