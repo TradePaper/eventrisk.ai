@@ -1,5 +1,8 @@
 fastapi
-uvicorn
+httpx
 numpy
-requests
 plotly
+pydantic
+python-multipart
+requests
+uvicorn

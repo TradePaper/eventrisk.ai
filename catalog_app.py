@@ -53,6 +53,11 @@ app = FastAPI(title="ProbEdge Research")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+def _serve_page(path: str) -> str:
+    with open(path) as f:
+        return f.read()
+
+
 # ---------------------------------------------------------------------------
 # Database
 # ---------------------------------------------------------------------------
@@ -148,43 +153,52 @@ class ContractIn(BaseModel):
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    return RedirectResponse(url="/event-markets")
+    return RedirectResponse(url="/explainer")
+
+
+@app.get("/explainer", response_class=HTMLResponse)
+def explainer_page():
+    return _serve_page("static/explainer.html")
+
+
+@app.get("/paper", response_class=HTMLResponse)
+def paper_page():
+    return _serve_page("static/paper.html")
+
+
+@app.get("/simulator", response_class=HTMLResponse)
+def simulator_page():
+    return _serve_page("static/simulator.html")
 
 
 @app.get("/event-markets", response_class=HTMLResponse)
 def event_markets():
-    with open("static/event-markets.html") as f:
-        return f.read()
+    return _serve_page("static/event-markets.html")
 
 
 @app.get("/hedging-simulator", response_class=HTMLResponse)
 def hedging_simulator():
-    with open("static/index.html") as f:
-        return f.read()
+    return _serve_page("static/index.html")
 
 
 @app.get("/probability-gap", response_class=HTMLResponse)
 def probability_gap():
-    with open("static/probability-gap.html") as f:
-        return f.read()
+    return _serve_page("static/probability-gap.html")
 
 
 @app.get("/contract-library", response_class=HTMLResponse)
 def contract_library():
-    with open("static/catalog.html") as f:
-        return f.read()
+    return _serve_page("static/catalog.html")
 
 
 @app.get("/backtest", response_class=HTMLResponse)
 def backtest_page():
-    with open("static/backtest.html") as f:
-        return f.read()
+    return _serve_page("static/backtest.html")
 
 
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page():
-    with open("static/reports.html") as f:
-        return f.read()
+    return _serve_page("static/reports.html")
 
 
 # ---------------------------------------------------------------------------
@@ -522,23 +536,7 @@ def app_config():
 
 @app.get("/status")
 def status():
-    health = {
-        name: dataclasses.asdict(provider.health)
-        for name, provider in _PROVIDERS.items()
-    }
-    overall = "ok"
-    for h in health.values():
-        if h["status"] == "down":
-            overall = "down"
-            break
-        if h["status"] == "degraded":
-            overall = "degraded"
-    return {
-        "status": overall,
-        "providers": health,
-        "analytics": bool(os.environ.get("POSTHOG_KEY")),
-        "version": "1.1.0",
-    }
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -1246,4 +1244,5 @@ def generate_report_now():
 init_db()
 
 if __name__ == "__main__":
-    uvicorn.run("catalog_app:app", host="0.0.0.0", port=5000, reload=False)
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("catalog_app:app", host="0.0.0.0", port=port, reload=False)
