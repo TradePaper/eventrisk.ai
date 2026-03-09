@@ -42,7 +42,9 @@ class CachedProvider(MarketProvider):
     # ------------------------------------------------------------------
 
     def _markets_stale(self) -> bool:
-        cached_at, _ = self._markets_cache
+        cached_at, cached_markets = self._markets_cache
+        if not cached_markets:
+            return True
         return time.monotonic() - cached_at > self._ttl
 
     def _prices_stale(self, event_id: str) -> bool:

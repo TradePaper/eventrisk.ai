@@ -16,6 +16,8 @@ from providers import MockProvider, PolymarketProvider, KalshiProvider, CachedPr
 from core.types_v12 import SimulationInputV12, LiquidityModel, InternalRepriceModel
 from core.strategies import simulate_strategy, simulate_strategy_paths
 from core.optimizer import optimize_hedge_ratio, build_risk_transfer_curve
+from core.frontier import build_efficiency_frontier
+from core.feasibility import build_feasibility_map
 from core.analytics import capture as analytics_capture
 
 
@@ -339,6 +341,64 @@ class InteractiveRiskTransferIn(BaseModel):
     strategy_modes: Optional[list[str]] = None
 
 
+
+class Tier2ScenarioIn(BaseModel):
+    liability: float
+    liquidity: float
+    true_probability: float
+    market_price: float
+    target_hedge_ratio: float
+    simulation_count: int
+
+
+def _tier2_base_input(params: Tier2ScenarioIn) -> SimulationInputV12:
+    p = min(max(params.market_price, 0.001), 0.999)
+    american_odds = int(-100 * p / (1 - p)) if p >= 0.5 else int(100 * (1 - p) / p)
+    return SimulationInputV12(
+        stake=max(params.liability, 1.0),
+        american_odds=american_odds,
+        true_win_prob=params.true_probability,
+        hedge_fraction=params.target_hedge_ratio,
+        fill_probability=1.0,
+        slippage_bps=20.0,
+        fee_bps=10.0,
+        latency_bps=5.0,
+        n_paths=params.simulation_count,
+        seed="tier2-frontier",
+        liability=params.liability,
+        strategy="external_hedge",
+        objective="max_ev",
+        liquidity=LiquidityModel(
+            available_liquidity=params.liquidity,
+            participation_rate=1.0,
+            impact_factor=0.0,
+            depth_exponent=1.0,
+        ),
+        cvar_alpha=0.95,
+    )
+
+
+@app.post("/api/tier2/frontier")
+def tier2_frontier(params: Tier2ScenarioIn):
+    base = _tier2_base_input(params)
+    frontier = build_efficiency_frontier(base)
+    return {
+        "title": "Figure 4 — Hedging Efficiency Frontier",
+        "frontiers": frontier,
+    }
+
+
+@app.post("/api/tier2/feasibility")
+def tier2_feasibility(params: Tier2ScenarioIn):
+    fmap = build_feasibility_map(params.target_hedge_ratio)
+    return {
+        "title": "Figure 5 — Sportsbook Hedging Feasibility Map",
+        "current": {
+            "liability": params.liability,
+            "liquidity": params.liquidity,
+        },
+        **fmap,
+    }
 @app.post("/simulate/v12")
 def simulate_v12(params: SimulateV12In):
     inp = _make_sim_input(params)

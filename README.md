@@ -188,6 +188,70 @@ DELETE /api/contracts/{id}
 POST /simulate
 POST /simulate/v12
 POST /simulate/v12/curve
+POST /api/tier2/frontier
+POST /api/tier2/feasibility
 GET  /api/risk-transfer?strategy=&objective=&liabilities=&stake=&american_odds=&true_win_prob=&fill_probability=&n_paths=&seed=
 GET  /status
 ```
+
+## Tier 2 (IDs 09–14)
+
+### Paper Mode behavior
+
+The Event Markets page includes a `Paper / Explore` toggle in the control bar.
+
+- Paper mode applies these locked defaults:
+  - `liability=100000000`
+  - `liquidity=20000000`
+  - `true_probability=0.55`
+  - `market_price=0.52`
+  - `target_hedge_ratio=0.60`
+  - `simulation_count=10000`
+- While Paper mode is active, the six control sliders/inputs are disabled.
+- Switching back to Explore restores the exact pre-Paper Explore values.
+
+### URL serialization format
+
+The six Tier 2 controls are synchronized to the URL query string with ~300ms debounce:
+
+- `liability` -> `liability`
+- `liquidity` -> `liquidity`
+- `true_probability` -> `p`
+- `market_price` -> `price`
+- `target_hedge_ratio` -> `hedge`
+- `simulation_count` -> `n`
+
+Load behavior:
+- Full query: initializes all six controls from URL.
+- Partial query: missing keys use defaults.
+- Invalid values: silently fall back to defaults.
+
+### Figure 4 interpretation
+
+`Figure 4 — Hedging Efficiency Frontier` plots two frontiers (`shallow`, `deep`) built by sweeping `hedge_ratio` from `0.00` to `1.00` in `0.05` increments.
+
+Per point:
+- `ev_sacrificed = EV_unhedged - EV_hedged`
+- `tail_reduction = EWCL_unhedged - EWCL_hedged`
+
+Hover fields:
+- Hedge Size
+- Liquidity Used
+- EV Change
+- Tail-Risk Improvement
+
+`deep` is constrained to be on/above `shallow` on tail-risk improvement.
+
+### Figure 5 interpretation
+
+`Figure 5 — Sportsbook Hedging Feasibility Map` is a 20x20 liquidity-vs-liability region map:
+
+- Liability axis: `20M -> 200M`
+- Liquidity axis: `1M -> 100M`
+- Effective hedge: `h_eff = min(target_hedge_ratio, Q/L)`
+- Regions:
+  - `<0.10` -> `No Effective Hedging`
+  - `<0.40` -> `Partial Hedging`
+  - `>=0.40` -> `Meaningful Hedging`
+
+A crosshair is drawn at the current global `(liability, liquidity)` and updates with control changes.
