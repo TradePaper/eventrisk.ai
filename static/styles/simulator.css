@@ -1,0 +1,366 @@
+:root {
+  --bg: #f1ede4;
+  --surface: rgba(255, 252, 246, 0.96);
+  --surface-strong: #fffdf8;
+  --surface-muted: #f4ecdc;
+  --text: #11232b;
+  --muted: #586972;
+  --brand: #0d5c63;
+  --brand-strong: #09393d;
+  --accent: #b07a00;
+  --border: rgba(17, 35, 43, 0.12);
+  --shadow: 0 24px 60px rgba(17, 35, 43, 0.12);
+  --radius: 22px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  background:
+    radial-gradient(circle at top left, rgba(176, 122, 0, 0.16), transparent 32%),
+    radial-gradient(circle at top right, rgba(13, 92, 99, 0.2), transparent 38%),
+    linear-gradient(180deg, #f8f4ea 0%, var(--bg) 100%);
+  font-family: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+.sim-nav {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+  background: rgba(241, 237, 228, 0.88);
+  border-bottom: 1px solid var(--border);
+}
+
+.sim-nav-inner {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 1rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.brand {
+  text-decoration: none;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.sim-nav-links {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sim-nav-links a {
+  text-decoration: none;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.sim-nav-links a[aria-current="page"] {
+  color: var(--brand-strong);
+}
+
+.sim-layout {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 1.25rem;
+}
+
+.control-column {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+}
+
+.hero-card,
+.control-card,
+.chart-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.hero-card {
+  padding: 1.4rem;
+  background:
+    linear-gradient(135deg, rgba(13, 92, 99, 0.95), rgba(9, 57, 61, 0.96)),
+    var(--surface);
+  color: #f7f8f5;
+}
+
+.hero-card h1 {
+  margin: 0.35rem 0 0.5rem;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: clamp(2rem, 3.2vw, 2.8rem);
+  line-height: 1.05;
+}
+
+.hero-card p {
+  margin: 0;
+  color: rgba(247, 248, 245, 0.84);
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.control-card {
+  padding: 1.25rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.control-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1rem;
+}
+
+.control-head h2,
+.chart-card-head h2 {
+  margin: 0;
+  font-family: "Source Serif 4", Georgia, serif;
+  font-size: 1.45rem;
+}
+
+.control-head p,
+.chart-card-head p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.preset-chip,
+.secondary-button,
+.retry-button {
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--brand-strong);
+  border-radius: 999px;
+  padding: 0.68rem 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.preset-chip.active {
+  background: var(--brand);
+  color: #fff;
+  border-color: var(--brand);
+}
+
+.control-group {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.control-label {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.control-group strong {
+  font-size: 1.1rem;
+}
+
+.control-group input {
+  width: 100%;
+  accent-color: var(--brand);
+}
+
+.control-group input[type="number"] {
+  border: 1px solid var(--border);
+  background: var(--surface-strong);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 0.9rem 0.95rem;
+  font: inherit;
+}
+
+.action-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.primary-button {
+  border: 0;
+  background: var(--brand-strong);
+  color: #fff;
+  border-radius: 999px;
+  padding: 0.82rem 1.15rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.control-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.chart-column {
+  display: grid;
+  gap: 1rem;
+}
+
+.chart-card {
+  padding: 1.15rem 1.15rem 1rem;
+  min-height: 320px;
+  position: relative;
+  overflow: hidden;
+}
+
+.chart-card-head {
+  margin-bottom: 0.85rem;
+}
+
+.chart-plot {
+  min-height: 320px;
+}
+
+.chart-skeleton,
+.chart-error {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.5), rgba(244, 236, 220, 0.9)),
+    var(--surface-muted);
+  border: 1px dashed rgba(17, 35, 43, 0.12);
+}
+
+.chart-skeleton {
+  gap: 1rem;
+}
+
+.spinner {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 3px solid rgba(13, 92, 99, 0.2);
+  border-top-color: var(--brand);
+  animation: spin 0.9s linear infinite;
+}
+
+.skeleton-bars {
+  width: min(420px, 80%);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  align-items: end;
+  gap: 0.8rem;
+  height: 120px;
+}
+
+.skeleton-bars span {
+  display: block;
+  border-radius: 14px 14px 0 0;
+  background: linear-gradient(180deg, rgba(13, 92, 99, 0.18), rgba(176, 122, 0, 0.26));
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.skeleton-bars span:nth-child(1) { height: 52%; }
+.skeleton-bars span:nth-child(2) { height: 72%; animation-delay: 0.1s; }
+.skeleton-bars span:nth-child(3) { height: 40%; animation-delay: 0.18s; }
+.skeleton-bars span:nth-child(4) { height: 88%; animation-delay: 0.26s; }
+
+.chart-error {
+  padding: 1.5rem;
+  text-align: center;
+  gap: 0.65rem;
+}
+
+.chart-error strong {
+  font-size: 1.1rem;
+}
+
+.chart-error p {
+  margin: 0;
+  color: var(--muted);
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (max-width: 1040px) {
+  .sim-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .sim-nav-inner,
+  .sim-layout {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .chart-card,
+  .control-card,
+  .hero-card {
+    border-radius: 18px;
+  }
+
+  .action-row {
+    flex-direction: column;
+  }
+
+  .primary-button,
+  .secondary-button {
+    width: 100%;
+  }
+}

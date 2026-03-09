@@ -6,35 +6,130 @@
     <title>EventRisk.ai Stress Test</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Serif+Display:opsz@40&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles/eventrisk.css" />
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:wght@500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles/simulator.css" />
+    <script src="/runtime-config.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script type="module" src="/static/scripts/simulator-app.mjs"></script>
   </head>
   <body>
-    <div class="app-shell">
-      <header class="top-nav">
-        <a href="/explainer" class="wordmark">EventRisk</a>
-        <nav class="nav-group">
-          <a class="nav-link" href="/explainer">Explainer</a>
-          <a class="nav-link" href="/paper">Paper Figures</a>
-          <a class="nav-link active" href="/simulator">Stress Test</a>
-          <a class="nav-link paper-out" href="https://eventrisk.ai/paper" target="_blank" rel="noopener noreferrer">Paper ↗</a>
+    <header class="sim-nav">
+      <div class="sim-nav-inner">
+        <a href="/explainer" class="brand">EventRisk.ai</a>
+        <nav class="sim-nav-links">
+          <a href="/explainer">Explainer</a>
+          <a href="/paper">Paper Figures</a>
+          <a href="/simulator" aria-current="page">Stress Test</a>
+          <a href="https://eventrisk.ai/paper" target="_blank" rel="noopener noreferrer">Paper ↗</a>
         </nav>
-      </header>
+      </div>
+    </header>
 
-      <main class="page-main">
-        <section class="snap-step">
-          <h1 class="step-title">Stress Test</h1>
-          <p class="step-subtitle">Interactive scenario controls stay in the simulator scope; explainer and paper routes are now narrative/static-first.</p>
-          <div class="panel">
-            <p>This route is intentionally lightweight in this redesign step.</p>
+    <main class="sim-layout">
+      <aside class="control-column">
+        <div class="hero-card">
+          <p class="eyebrow">Priority 3 + 4</p>
+          <h1>Stress-test live event hedging scenarios.</h1>
+          <p class="lede">Use the live API only on this route. The explainer and paper stay static-first.</p>
+        </div>
+
+        <section class="control-card">
+          <div class="control-head">
+            <h2>Scenario Controls</h2>
+            <p id="chartStatus">Awaiting run</p>
           </div>
-        </section>
-      </main>
 
-      <footer class="page-footer">
-        Citation: EventRisk.ai (2026). Risk Transfer Under Liquidity Constraints.
-        <a href="https://eventrisk.ai/paper" target="_blank" rel="noopener noreferrer">Paper link</a>
-      </footer>
-    </div>
+          <div class="preset-row">
+            <button type="button" class="preset-chip active" data-preset="superbowl">Super Bowl</button>
+            <button type="button" class="preset-chip" data-preset="election">Election</button>
+            <button type="button" class="preset-chip" data-preset="weather">Weather</button>
+          </div>
+
+          <label class="control-group" for="liabilityInput">
+            <span class="control-label">Liability</span>
+            <strong id="liabilityValue">$100,000,000</strong>
+            <input id="liabilityInput" name="liability" type="number" min="1000000" max="250000000" step="1000000" value="100000000" />
+          </label>
+
+          <label class="control-group" for="liquidityInput">
+            <span class="control-label">Liquidity (log scale)</span>
+            <strong id="liquidityValue">$20,000,000</strong>
+            <input id="liquidityInput" name="liquidity" type="range" min="6" max="8" step="0.01" value="7.301" />
+          </label>
+
+          <label class="control-group" for="hedgeInput">
+            <span class="control-label">Hedge Fraction</span>
+            <strong id="hedgeValue">60%</strong>
+            <input id="hedgeInput" name="hedgeFraction" type="range" min="0" max="1" step="0.05" value="0.6" />
+          </label>
+
+          <div class="action-row">
+            <button id="runSimulation" type="button" class="primary-button">Run Simulation</button>
+            <button id="copyShareLink" type="button" class="secondary-button">Copy Share Link</button>
+          </div>
+
+          <p class="control-footnote">Share format: <code>/simulator?v=1&amp;lb={liability}&amp;liq={liquidity}&amp;hf={hedgeFraction}</code></p>
+        </section>
+      </aside>
+
+      <section class="chart-column">
+        <article class="chart-card" data-chart-shell="distribution">
+          <div class="chart-card-head">
+            <h2>Sportsbook Loss Distribution</h2>
+            <p>Unhedged versus hedged simulated P&amp;L outcomes.</p>
+          </div>
+          <div class="chart-skeleton" data-chart-skeleton="distribution">
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="skeleton-bars">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="chart-error" data-chart-error="distribution" hidden>
+            <strong>Simulation unavailable. Retry?</strong>
+            <p class="chart-error-detail">The live API could not be reached.</p>
+            <button type="button" class="retry-button" data-chart-retry="distribution">Retry</button>
+          </div>
+          <div class="chart-plot" data-chart-plot="distribution" hidden></div>
+        </article>
+
+        <article class="chart-card" data-chart-shell="curve">
+          <div class="chart-card-head">
+            <h2>Liquidity-Constrained Risk Transfer Curve</h2>
+            <p>EWCL and optimal hedge response across the liability range.</p>
+          </div>
+          <div class="chart-skeleton" data-chart-skeleton="curve">
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="skeleton-bars">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="chart-error" data-chart-error="curve" hidden>
+            <strong>Simulation unavailable. Retry?</strong>
+            <p class="chart-error-detail">The live API could not be reached.</p>
+            <button type="button" class="retry-button" data-chart-retry="curve">Retry</button>
+          </div>
+          <div class="chart-plot" data-chart-plot="curve" hidden></div>
+        </article>
+
+        <article class="chart-card" data-chart-shell="frontier">
+          <div class="chart-card-head">
+            <h2>Hedging Efficiency Frontier</h2>
+            <p>Tail-risk reduction versus EV sacrificed under shallow and deep markets.</p>
+          </div>
+          <div class="chart-skeleton" data-chart-skeleton="frontier">
+            <div class="spinner" aria-hidden="true"></div>
+            <div class="skeleton-bars">
+              <span></span><span></span><span></span><span></span>
+            </div>
+          </div>
+          <div class="chart-error" data-chart-error="frontier" hidden>
+            <strong>Simulation unavailable. Retry?</strong>
+            <p class="chart-error-detail">The live API could not be reached.</p>
+            <button type="button" class="retry-button" data-chart-retry="frontier">Retry</button>
+          </div>
+          <div class="chart-plot" data-chart-plot="frontier" hidden></div>
+        </article>
+      </section>
+    </main>
   </body>
 </html>
