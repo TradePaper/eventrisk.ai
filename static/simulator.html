@@ -3,31 +3,38 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ProbEdge Simulator</title>
+    <title>EventRisk.ai Stress Test</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Source+Serif+4:wght@500;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/static/styles/global.css" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Serif+Display:opsz@40&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles/eventrisk.css" />
   </head>
   <body>
-    <header class="site-nav">
-      <div class="site-nav-inner">
-        <a href="/explainer">ProbEdge</a>
-        <nav class="site-nav-links">
-          <a href="/explainer">Explainer</a>
-          <a href="/paper">Paper</a>
-          <a href="/simulator">Simulator</a>
+    <div class="app-shell">
+      <header class="top-nav">
+        <a href="/explainer" class="wordmark">EventRisk</a>
+        <nav class="nav-group">
+          <a class="nav-link" href="/explainer">Explainer</a>
+          <a class="nav-link" href="/paper">Paper Figures</a>
+          <a class="nav-link active" href="/simulator">Stress Test</a>
+          <a class="nav-link paper-out" href="https://eventrisk.ai/paper" target="_blank" rel="noopener noreferrer">Paper ↗</a>
         </nav>
-      </div>
-    </header>
-    <main>
-      <section class="site-card">
-        <h1>Simulator</h1>
-        <p>Simulator page scaffold is live. Simulation workflows are intentionally not implemented in this change.</p>
-      </section>
-    </main>
-    <footer class="site-footer">
-      <div class="site-footer-inner">ProbEdge foundation build • status endpoint: <code>/status</code></div>
-    </footer>
+      </header>
+
+      <main class="page-main">
+        <section class="snap-step">
+          <h1 class="step-title">Stress Test</h1>
+          <p class="step-subtitle">Interactive scenario controls stay in the simulator scope; explainer and paper routes are now narrative/static-first.</p>
+          <div class="panel">
+            <p>This route is intentionally lightweight in this redesign step.</p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="page-footer">
+        Citation: EventRisk.ai (2026). Risk Transfer Under Liquidity Constraints.
+        <a href="https://eventrisk.ai/paper" target="_blank" rel="noopener noreferrer">Paper link</a>
+      </footer>
+    </div>
   </body>
 </html>

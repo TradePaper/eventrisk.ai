@@ -1,0 +1,50 @@
+{
+  "id": "superbowl",
+  "name": "Super Bowl",
+  "paper_url": "https://eventrisk.ai/paper",
+  "meta": {
+    "event": "Super Bowl LIX Winner",
+    "stake_usd": 120000000,
+    "true_probability": 0.55,
+    "market_price": 0.52,
+    "liquidity_usd": 20000000,
+    "target_hedge_ratio": 0.60,
+    "simulation_count": 10000,
+    "seed": "superbowl_v1"
+  },
+  "step1": {
+    "title": "Figure 1 — Unhedged Liability Distribution",
+    "bins": [-120,-110,-100,-90,-80,-70,-60,-50,-40,-30,-20,-10,0,10],
+    "unhedged_density": [0.01,0.03,0.05,0.08,0.10,0.14,0.15,0.14,0.11,0.08,0.06,0.03,0.01,0.01],
+    "ev_m": -3.2,
+    "cvar95_m": -76.1,
+    "max_loss_m": -120.0
+  },
+  "step2": {
+    "title": "Figure 2 — Hedged vs Unhedged Distribution Overlay",
+    "bins": [-120,-110,-100,-90,-80,-70,-60,-50,-40,-30,-20,-10,0,10],
+    "unhedged_density": [0.01,0.03,0.05,0.08,0.10,0.14,0.15,0.14,0.11,0.08,0.06,0.03,0.01,0.01],
+    "hedged_density": [0.00,0.00,0.01,0.02,0.05,0.09,0.14,0.16,0.17,0.15,0.11,0.06,0.03,0.01],
+    "ev_unhedged_m": -3.2,
+    "ev_hedged_m": -5.1,
+    "cvar95_unhedged_m": -76.1,
+    "cvar95_hedged_m": -41.2,
+    "tail_reduction_pct": 45.9
+  },
+  "step3": {
+    "title": "Figure 3 — Liquidity-Constrained Risk Transfer Curve",
+    "points": [
+      {"liability_m": 20, "tail_risk_unhedged_m": 13.9, "tail_risk_hedged_m": 8.8, "hedge_utilization": 0.22, "feasibility": "green"},
+      {"liability_m": 40, "tail_risk_unhedged_m": 27.1, "tail_risk_hedged_m": 17.0, "hedge_utilization": 0.35, "feasibility": "green"},
+      {"liability_m": 60, "tail_risk_unhedged_m": 40.9, "tail_risk_hedged_m": 27.8, "hedge_utilization": 0.44, "feasibility": "yellow"},
+      {"liability_m": 80, "tail_risk_unhedged_m": 54.0, "tail_risk_hedged_m": 40.5, "hedge_utilization": 0.52, "feasibility": "yellow"},
+      {"liability_m": 100, "tail_risk_unhedged_m": 67.8, "tail_risk_hedged_m": 55.4, "hedge_utilization": 0.60, "feasibility": "yellow"},
+      {"liability_m": 120, "tail_risk_unhedged_m": 81.6, "tail_risk_hedged_m": 72.6, "hedge_utilization": 0.72, "feasibility": "red"}
+    ],
+    "zones": {
+      "green_max_utilization": 0.39,
+      "yellow_max_utilization": 0.69,
+      "labels": {"green": "Meaningful", "yellow": "Partial", "red": "Constrained"}
+    }
+  }
+}
