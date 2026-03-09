@@ -4,8 +4,3 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 CMD ["python", "-m", "uvicorn", "catalog_app:app", "--host", "0.0.0.0", "--port", "8000"]
-```
-
-Then in Railway **Variables** tab, make sure you have:
-```
-PORT = 8000
