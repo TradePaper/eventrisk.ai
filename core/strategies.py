@@ -64,7 +64,6 @@ def _build_metrics(
     hedge_fraction: float,
     eff_h: float,
     utilization: float,
-    cvar_alpha: float,
 ) -> StrategyMetrics:
     return StrategyMetrics(
         ev=float(pnl.mean()),
@@ -72,7 +71,7 @@ def _build_metrics(
         p50=float(np.percentile(pnl, 50)),
         p95=float(np.percentile(pnl, 95)),
         max_loss=float(pnl.min()),
-        cvar_95=_cvar(pnl.tolist(), alpha=cvar_alpha),
+        cvar_95=_cvar(pnl.tolist(), alpha=0.95),
         optimal_hedge_ratio=hedge_fraction,
         effective_hedge_notional=eff_h,
         hedge_utilization=utilization,
@@ -83,8 +82,16 @@ def _build_metrics(
 # External hedge
 # ---------------------------------------------------------------------------
 
-def _external_hedge_paths(inp: SimulationInputV12) -> tuple[np.ndarray, float, float]:
-    """Returns (pnl_paths, effective_hedge_notional, hedge_utilization)."""
+def simulate_external_hedge(inp: SimulationInputV12) -> StrategyMetrics:
+    """
+    Sportsbook buys YES contracts on the prediction market to offset liability.
+
+    Per path:
+      requested_hedge = hedge_fraction * liability
+      effective_hedge = min(requested_hedge, max_hedge_notional) * fill
+      If YES: P/L = (stake - liability) + effective_hedge - effective_hedge * p * (1 + cost_rate)
+      If NO:  P/L = stake               - effective_hedge * p * (1 + cost_rate)
+    """
     rng = _make_rng(inp.seed)
     p_market = _american_to_prob(inp.american_odds)
     liability = inp.liability if inp.liability > 0 else _derive_liability(inp.stake, inp.american_odds)
@@ -105,28 +112,25 @@ def _external_hedge_paths(inp: SimulationInputV12) -> tuple[np.ndarray, float, f
         (inp.stake - liability) + eff_hedges - premiums,
         inp.stake - premiums,
     )
-    return pnl, eff_h, utilization
-
-
-def simulate_external_hedge(inp: SimulationInputV12) -> StrategyMetrics:
-    """
-    Sportsbook buys YES contracts on the prediction market to offset liability.
-
-    Per path:
-      requested_hedge = hedge_fraction * liability
-      effective_hedge = min(requested_hedge, max_hedge_notional) * fill
-      If YES: P/L = (stake - liability) + effective_hedge - effective_hedge * p * (1 + cost_rate)
-      If NO:  P/L = stake               - effective_hedge * p * (1 + cost_rate)
-    """
-    pnl, eff_h, utilization = _external_hedge_paths(inp)
-    return _build_metrics(pnl, inp.hedge_fraction, eff_h, utilization, inp.cvar_alpha)
+    return _build_metrics(pnl, inp.hedge_fraction, eff_h, utilization)
 
 
 # ---------------------------------------------------------------------------
 # Internal reprice
 # ---------------------------------------------------------------------------
 
-def _internal_reprice_paths(inp: SimulationInputV12) -> np.ndarray:
+def simulate_internal_reprice(inp: SimulationInputV12) -> StrategyMetrics:
+    """
+    Sportsbook moves its offered odds to discourage further liability buildup.
+
+    prob_move = odds_move_sensitivity * liability
+    handle_factor = 1 - handle_retention_decay * prob_move  (handle lost due to worse odds)
+    effective_handle = stake * handle_factor
+
+    Per path:
+      If YES: P/L = effective_handle - liability
+      If NO:  P/L = effective_handle
+    """
     rng = _make_rng(inp.seed)
     liability = inp.liability if inp.liability > 0 else _derive_liability(inp.stake, inp.american_odds)
 
@@ -142,30 +146,20 @@ def _internal_reprice_paths(inp: SimulationInputV12) -> np.ndarray:
         effective_handle = inp.stake
 
     pnl = np.where(yes, effective_handle - liability, effective_handle)
-    return pnl
-
-
-def simulate_internal_reprice(inp: SimulationInputV12) -> StrategyMetrics:
-    """
-    Sportsbook moves its offered odds to discourage further liability buildup.
-
-    prob_move = odds_move_sensitivity * liability
-    handle_factor = 1 - handle_retention_decay * prob_move  (handle lost due to worse odds)
-    effective_handle = stake * handle_factor
-
-    Per path:
-      If YES: P/L = effective_handle - liability
-      If NO:  P/L = effective_handle
-    """
-    pnl = _internal_reprice_paths(inp)
-    return _build_metrics(pnl, inp.hedge_fraction, 0.0, 0.0, inp.cvar_alpha)
+    return _build_metrics(pnl, inp.hedge_fraction, 0.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
 # Hybrid
 # ---------------------------------------------------------------------------
 
-def _hybrid_paths(inp: SimulationInputV12) -> tuple[np.ndarray, float, float]:
+def simulate_hybrid(inp: SimulationInputV12) -> StrategyMetrics:
+    """
+    Partial internal reprice first, then external hedge on residual liability.
+
+    reprice covers (1 - hedge_fraction) share of liability.
+    external hedge covers hedge_fraction * liability.
+    """
     rng = _make_rng(inp.seed)
     p_market = _american_to_prob(inp.american_odds)
     liability = inp.liability if inp.liability > 0 else _derive_liability(inp.stake, inp.american_odds)
@@ -197,18 +191,7 @@ def _hybrid_paths(inp: SimulationInputV12) -> tuple[np.ndarray, float, float]:
         effective_handle - liability + eff_hedges - premiums,
         effective_handle - premiums,
     )
-    return pnl, eff_h, utilization
-
-
-def simulate_hybrid(inp: SimulationInputV12) -> StrategyMetrics:
-    """
-    Partial internal reprice first, then external hedge on residual liability.
-
-    reprice covers (1 - hedge_fraction) share of liability.
-    external hedge covers hedge_fraction * liability.
-    """
-    pnl, eff_h, utilization = _hybrid_paths(inp)
-    return _build_metrics(pnl, inp.hedge_fraction, eff_h, utilization, inp.cvar_alpha)
+    return _build_metrics(pnl, inp.hedge_fraction, eff_h, utilization)
 
 
 # ---------------------------------------------------------------------------
@@ -223,12 +206,63 @@ def simulate_strategy(inp: SimulationInputV12) -> StrategyMetrics:
     return simulate_hybrid(inp)
 
 
-def simulate_strategy_paths(inp: SimulationInputV12) -> np.ndarray:
-    """Returns deterministic P/L path array for the selected strategy."""
+# ---------------------------------------------------------------------------
+# Raw PnL arrays (for distribution analysis)
+# ---------------------------------------------------------------------------
+
+def _external_hedge_pnl(inp: SimulationInputV12) -> np.ndarray:
+    rng = _make_rng(inp.seed)
+    p_market = _american_to_prob(inp.american_odds)
+    liability = inp.liability if inp.liability > 0 else _derive_liability(inp.stake, inp.american_odds)
+    requested_hedge = inp.hedge_fraction * liability
+    eff_h, cost_rate, _, _ = _liquidity_params(inp, requested_hedge)
+    hedge_premium_rate = p_market * (1.0 + cost_rate)
+    n = inp.n_paths
+    fills = rng.random(n) < inp.fill_probability
+    yes = rng.random(n) < inp.true_win_prob
+    eff_hedges = np.where(fills, eff_h, 0.0)
+    premiums = eff_hedges * hedge_premium_rate
+    return np.where(yes, (inp.stake - liability) + eff_hedges - premiums, inp.stake - premiums)
+
+
+def _internal_reprice_pnl(inp: SimulationInputV12) -> np.ndarray:
+    rng = _make_rng(inp.seed)
+    liability = inp.liability if inp.liability > 0 else _derive_liability(inp.stake, inp.american_odds)
+    n = inp.n_paths
+    yes = rng.random(n) < inp.true_win_prob
+    if inp.internal_reprice and inp.internal_reprice.enabled:
+        m = inp.internal_reprice
+        effective_handle = inp.stake * max(0.0, 1.0 - m.handle_retention_decay * m.odds_move_sensitivity * liability)
+    else:
+        effective_handle = inp.stake
+    return np.where(yes, effective_handle - liability, effective_handle)
+
+
+def _hybrid_pnl(inp: SimulationInputV12) -> np.ndarray:
+    rng = _make_rng(inp.seed)
+    p_market = _american_to_prob(inp.american_odds)
+    liability = inp.liability if inp.liability > 0 else _derive_liability(inp.stake, inp.american_odds)
+    reprice_liability = (1.0 - inp.hedge_fraction) * liability
+    hedge_liability = inp.hedge_fraction * liability
+    if inp.internal_reprice and inp.internal_reprice.enabled:
+        m = inp.internal_reprice
+        effective_handle = inp.stake * max(0.0, 1.0 - m.handle_retention_decay * m.odds_move_sensitivity * reprice_liability)
+    else:
+        effective_handle = inp.stake
+    eff_h, cost_rate, _, _ = _liquidity_params(inp, hedge_liability)
+    hedge_premium_rate = p_market * (1.0 + cost_rate)
+    n = inp.n_paths
+    fills = rng.random(n) < inp.fill_probability
+    yes = rng.random(n) < inp.true_win_prob
+    eff_hedges = np.where(fills, eff_h, 0.0)
+    premiums = eff_hedges * hedge_premium_rate
+    return np.where(yes, effective_handle - liability + eff_hedges - premiums, effective_handle - premiums)
+
+
+def simulate_strategy_raw(inp: SimulationInputV12) -> np.ndarray:
+    """Return the raw per-path P&L array for distribution analysis."""
     if inp.strategy == "external_hedge":
-        pnl, _, _ = _external_hedge_paths(inp)
-        return pnl
+        return _external_hedge_pnl(inp)
     if inp.strategy == "internal_reprice":
-        return _internal_reprice_paths(inp)
-    pnl, _, _ = _hybrid_paths(inp)
-    return pnl
+        return _internal_reprice_pnl(inp)
+    return _hybrid_pnl(inp)

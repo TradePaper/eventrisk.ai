@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Weekly Reports — ProbEdge</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    .rpt-grid { display: grid; grid-template-columns: 260px 1fr; gap: 20px; align-items: start; }
+    .rpt-list-panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 18px; }
+    .rpt-list-panel h2 { font-size: .9rem; font-weight: 600; margin: 0 0 14px; color: var(--text); }
+    .rpt-item { padding: 10px 12px; border-radius: 7px; cursor: pointer; border: 1px solid transparent; margin-bottom: 6px; }
+    .rpt-item:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .rpt-item.active { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+    .rpt-item .week { font-weight: 600; font-size: .88rem; color: var(--text); }
+    .rpt-item .size { font-size: .76rem; color: var(--muted); margin-top: 2px; }
+    .rpt-content-panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 28px 32px; }
+    .rpt-content-panel h1,h2,h3 { color: var(--text); }
+    .rpt-content-panel h1 { font-size: 1.25rem; margin-bottom: 8px; }
+    .rpt-content-panel h2 { font-size: 1rem; margin: 24px 0 10px; }
+    .rpt-content-panel p  { font-size: .88rem; color: var(--muted); line-height: 1.6; margin-bottom: 10px; }
+    .rpt-content-panel table { width: 100%; border-collapse: collapse; margin-bottom: 18px; font-size: .84rem; }
+    .rpt-content-panel th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+    .rpt-content-panel td { padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+    .rpt-content-panel code { background: color-mix(in srgb, var(--accent) 10%, transparent); padding: 1px 6px; border-radius: 4px; font-size: .82rem; }
+    .rpt-content-panel ul { margin: 0 0 12px 18px; font-size: .85rem; color: var(--muted); line-height: 1.7; }
+    .rpt-content-panel em { color: var(--muted); }
+    .rpt-content-panel strong { color: var(--text); }
+    .placeholder { color: var(--muted); font-size: .9rem; padding: 40px; text-align: center; }
+    .gen-btn { padding: 8px 16px; border-radius: 7px; border: 1px solid var(--accent); background: transparent;
+      color: var(--accent); cursor: pointer; font-size: .82rem; font-weight: 600; }
+    .gen-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+    .toolbar h2 { margin: 0; flex: 1; }
+  </style>
+</head>
+<body>
+  <div id="nav-root"></div>
+  <main class="container" style="padding: 28px 24px;">
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px;">
+      <h1 style="font-size:1.4rem;font-weight:700;margin:0;">Weekly Reports</h1>
+      <button class="gen-btn" onclick="generateNow()">Generate This Week's Report</button>
+    </div>
+
+    <div class="rpt-grid">
+      <div class="rpt-list-panel">
+        <h2>Available Reports</h2>
+        <div id="report-list"><div class="placeholder" style="padding:16px;font-size:.84rem;">Loading…</div></div>
+      </div>
+      <div class="rpt-content-panel" id="rpt-content">
+        <div class="placeholder">Select a report to view it.</div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/nav.js"></script>
+  <script>
+    let _activeFile = null;
+
+    async function loadList() {
+      const r = await fetch('/api/reports');
+      const d = await r.json();
+      const el = document.getElementById('report-list');
+      if (!d.reports.length) {
+        el.innerHTML = '<div class="placeholder" style="padding:12px;font-size:.82rem;">No reports yet. Generate one to get started.</div>';
+        return;
+      }
+      el.innerHTML = d.reports.map(rpt => `
+        <div class="rpt-item${rpt.filename === _activeFile ? ' active' : ''}" onclick="loadReport('${rpt.filename}')">
+          <div class="week">${rpt.week}</div>
+          <div class="size">${(rpt.size_bytes / 1024).toFixed(1)} KB</div>
+        </div>`).join('');
+    }
+
+    async function loadReport(filename) {
+      _activeFile = filename;
+      document.querySelectorAll('.rpt-item').forEach(el => {
+        el.classList.toggle('active', el.querySelector('.week')?.textContent === filename.replace('.md',''));
+      });
+      const r = await fetch(`/api/reports/${filename}`);
+      if (!r.ok) { document.getElementById('rpt-content').innerHTML = '<div class="placeholder">Failed to load.</div>'; return; }
+      const d = await r.json();
+      document.getElementById('rpt-content').innerHTML = marked.parse(d.content);
+    }
+
+    async function generateNow() {
+      const btn = document.querySelector('.gen-btn');
+      btn.textContent = 'Generating…'; btn.disabled = true;
+      try {
+        const r = await fetch('/api/reports/generate', {method:'POST'});
+        const d = await r.json();
+        await loadList();
+        loadReport(d.week + '.md');
+      } finally {
+        btn.textContent = "Generate This Week's Report"; btn.disabled = false;
+      }
+    }
+
+    loadList().then(() => {
+      // Auto-load most recent report
+      const first = document.querySelector('.rpt-item');
+      if (first) first.click();
+    });
+  </script>
+</body>
+</html>

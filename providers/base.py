@@ -21,6 +21,7 @@ class MarketData:
     updated_at: str
     volume: Optional[float] = None
     end_date: Optional[str] = None
+    sport: Optional[str] = None
 
 
 @dataclass

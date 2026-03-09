@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Historical Backtesting — ProbEdge</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <style>
+    .bt-grid { display: grid; grid-template-columns: 340px 1fr; gap: 24px; align-items: start; }
+    .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 22px 24px; }
+    .panel h2 { font-size: 1rem; font-weight: 600; margin: 0 0 18px; color: var(--text); }
+    .form-row { margin-bottom: 14px; }
+    .form-row label { display: block; font-size: .82rem; color: var(--muted); margin-bottom: 5px; }
+    .form-row input, .form-row select { width: 100%; padding: 7px 10px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: .88rem; box-sizing: border-box; }
+    .btn-run { width: 100%; padding: 10px; border-radius: 7px; border: none; cursor: pointer;
+      background: var(--accent); color: #fff; font-size: .95rem; font-weight: 600; margin-top: 6px; }
+    .btn-run:disabled { opacity: .5; cursor: not-allowed; }
+    .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+    .metric-card { background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+      padding: 14px 16px; text-align: center; }
+    .metric-card .val { font-size: 1.5rem; font-weight: 700; color: var(--accent); }
+    .metric-card .lbl { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+    .chart-wrap { margin-bottom: 24px; }
+    .status-pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: .8rem; font-weight: 600; }
+    .pill-running { background: #fef3c7; color: #92400e; }
+    .pill-complete { background: #d1fae5; color: #065f46; }
+    .pill-failed   { background: #fee2e2; color: #991b1b; }
+    .section-title { font-size: .9rem; font-weight: 600; color: var(--muted); margin: 0 0 12px; text-transform: uppercase; letter-spacing: .04em; }
+    .runs-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+    .runs-table th { text-align: left; color: var(--muted); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+    .runs-table td { padding: 7px 8px; border-bottom: 1px solid var(--border); color: var(--text); }
+    .runs-table tr:last-child td { border-bottom: none; }
+    .runs-table tr.selected td { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+    .runs-table tr { cursor: pointer; }
+    .runs-table tr:hover td { background: color-mix(in srgb, var(--accent) 5%, transparent); }
+    .compare-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+    .compare-card { border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+    .compare-card h3 { font-size: .85rem; font-weight: 600; color: var(--accent); margin: 0 0 10px; }
+    .compare-card .row { display: flex; justify-content: space-between; font-size: .82rem; padding: 3px 0; }
+    .compare-card .row span:first-child { color: var(--muted); }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .placeholder { color: var(--muted); font-size: .92rem; padding: 40px; text-align: center; }
+    .adv-toggle { font-size: .82rem; color: var(--accent); cursor: pointer; margin-top: 8px; display: inline-block; }
+    .adv-section { display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .calib-chart { height: 220px; }
+    .snapshot-badge { font-size: .78rem; color: var(--muted); margin-top: 10px; }
+    .snapshot-badge strong { color: var(--text); }
+  </style>
+</head>
+<body>
+  <div id="nav-root"></div>
+  <main class="container" style="padding: 28px 24px;">
+    <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:24px;">
+      <h1 style="font-size:1.4rem;font-weight:700;margin:0;">Historical Backtesting</h1>
+      <span id="snap-badge" class="snapshot-badge">Loading snapshot count…</span>
+    </div>
+
+    <div class="bt-grid">
+      <!-- Left: configuration -->
+      <div>
+        <div class="panel">
+          <h2>Run Configuration</h2>
+          <div class="form-row">
+            <label>Date From (UTC)</label>
+            <input type="datetime-local" id="date-from" />
+          </div>
+          <div class="form-row">
+            <label>Date To (UTC)</label>
+            <input type="datetime-local" id="date-to" />
+          </div>
+          <div class="form-row">
+            <label>Strategy</label>
+            <select id="strategy">
+              <option value="external_hedge">External Hedge</option>
+              <option value="internal_reprice">Internal Reprice</option>
+              <option value="hybrid">Hybrid</option>
+              <option value="compare_all">Compare All Three</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Source Filter</label>
+            <select id="source-filter">
+              <option value="">All Sources</option>
+              <option value="mock">Mock</option>
+              <option value="polymarket">Polymarket</option>
+              <option value="kalshi">Kalshi</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Stake per Trade ($)</label>
+            <input type="number" id="stake" value="100" min="1" max="10000" step="10" />
+          </div>
+          <div class="form-row">
+            <label>Hedge Fraction</label>
+            <input type="number" id="hedge-frac" value="0.5" min="0" max="1" step="0.05" />
+          </div>
+          <div class="form-row">
+            <label>Fill Probability</label>
+            <input type="number" id="fill-prob" value="0.85" min="0" max="1" step="0.05" />
+          </div>
+
+          <span class="adv-toggle" id="adv-toggle">+ Advanced params</span>
+          <div class="adv-section" id="adv-section">
+            <div class="form-row">
+              <label>True Win Prob (book edge model)</label>
+              <input type="number" id="true-win-prob" value="0.5" min="0.01" max="0.99" step="0.01" />
+            </div>
+            <div class="form-row">
+              <label>Slippage (bps)</label>
+              <input type="number" id="slippage" value="20" min="0" max="500" />
+            </div>
+            <div class="form-row">
+              <label>Fee (bps)</label>
+              <input type="number" id="fee" value="10" min="0" max="200" />
+            </div>
+            <div class="form-row">
+              <label>Latency (bps)</label>
+              <input type="number" id="latency" value="5" min="0" max="100" />
+            </div>
+            <div class="form-row">
+              <label>MC Paths</label>
+              <input type="number" id="n-paths" value="500" min="100" max="5000" step="100" />
+            </div>
+            <div class="form-row">
+              <label>Seed (for reproducibility)</label>
+              <input type="text" id="seed" placeholder="e.g. backtest-v1" />
+            </div>
+          </div>
+
+          <button class="btn-run" id="btn-run" onclick="submitRun()">Run Backtest</button>
+          <button class="btn-run" style="margin-top:8px;background:var(--border);color:var(--text);font-weight:400;font-size:.83rem;" onclick="pollNow()">Force Snapshot Poll</button>
+        </div>
+
+        <!-- Recent runs -->
+        <div class="panel" style="margin-top:18px;">
+          <h2>Recent Runs</h2>
+          <div id="runs-list"><div class="placeholder" style="padding:16px;">No runs yet.</div></div>
+        </div>
+      </div>
+
+      <!-- Right: results -->
+      <div id="results-panel">
+        <div class="placeholder">Submit a configuration to run a backtest.</div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/nav.js"></script>
+  <script>
+    // ── Defaults ────────────────────────────────────────────────────────────
+    (function setDefaultDates() {
+      const now = new Date();
+      const past = new Date(now.getTime() - 7 * 24 * 3600 * 1000);
+      document.getElementById('date-to').value   = now.toISOString().slice(0,16);
+      document.getElementById('date-from').value = past.toISOString().slice(0,16);
+    })();
+
+    document.getElementById('adv-toggle').onclick = function() {
+      const s = document.getElementById('adv-section');
+      const open = s.style.display === 'block';
+      s.style.display = open ? 'none' : 'block';
+      this.textContent = open ? '+ Advanced params' : '− Advanced params';
+    };
+
+    // ── Snapshot count badge ─────────────────────────────────────────────────
+    async function loadSnapshotCount() {
+      try {
+        const r = await fetch('/api/backtest/snapshots/count');
+        const d = await r.json();
+        document.getElementById('snap-badge').innerHTML =
+          `<strong>${d.count.toLocaleString()}</strong> snapshots stored`;
+      } catch { document.getElementById('snap-badge').textContent = ''; }
+    }
+    loadSnapshotCount();
+
+    // ── Submit run ──────────────────────────────────────────────────────────
+    let _pollTimer = null;
+    let _activeRunId = null;
+
+    function toUtcIso(localStr) {
+      return localStr ? new Date(localStr).toISOString() : null;
+    }
+
+    async function submitRun() {
+      const strategy = document.getElementById('strategy').value;
+      const isCompare = strategy === 'compare_all';
+      const strategies = isCompare
+        ? ['external_hedge', 'internal_reprice', 'hybrid']
+        : [strategy];
+
+      const baseParams = {
+        date_from_utc:   toUtcIso(document.getElementById('date-from').value),
+        date_to_utc:     toUtcIso(document.getElementById('date-to').value),
+        source_filter:   document.getElementById('source-filter').value || null,
+        stake:           +document.getElementById('stake').value,
+        hedge_fraction:  +document.getElementById('hedge-frac').value,
+        fill_probability:+document.getElementById('fill-prob').value,
+        true_win_prob:   +document.getElementById('true-win-prob').value,
+        slippage_bps:    +document.getElementById('slippage').value,
+        fee_bps:         +document.getElementById('fee').value,
+        latency_bps:     +document.getElementById('latency').value,
+        n_paths:         +document.getElementById('n-paths').value,
+        seed:            document.getElementById('seed').value || null,
+      };
+
+      if (!baseParams.date_from_utc || !baseParams.date_to_utc) {
+        return alert('Please set both date from and date to.');
+      }
+
+      document.getElementById('btn-run').disabled = true;
+      showRunning(isCompare ? 'compare_all' : strategy);
+
+      if (isCompare) {
+        const runIds = [];
+        for (const s of strategies) {
+          const r = await fetch('/api/backtest/run', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({...baseParams, strategy: s}),
+          });
+          const d = await r.json();
+          runIds.push({strategy: s, run_id: d.run_id});
+        }
+        pollCompare(runIds);
+      } else {
+        const r = await fetch('/api/backtest/run', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({...baseParams, strategy}),
+        });
+        const d = await r.json();
+        _activeRunId = d.run_id;
+        pollSingle(_activeRunId);
+      }
+      loadRuns();
+    }
+
+    function showRunning(strategy) {
+      document.getElementById('results-panel').innerHTML = `
+        <div class="panel">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px;">
+            <span class="spinner"></span>
+            <span style="font-weight:600;">Running backtest — ${strategy}…</span>
+          </div>
+          <p style="color:var(--muted);font-size:.9rem;margin:0;">
+            The engine is replaying market snapshots in chronological order.
+            Results will appear here automatically.
+          </p>
+        </div>`;
+    }
+
+    function pollSingle(run_id) {
+      clearTimeout(_pollTimer);
+      _pollTimer = setTimeout(async () => {
+        try {
+          const r = await fetch(`/api/backtest/${run_id}`);
+          const d = await r.json();
+          if (d.status === 'running') {
+            pollSingle(run_id);
+          } else {
+            document.getElementById('btn-run').disabled = false;
+            renderSingle(d);
+            loadRuns();
+          }
+        } catch { pollSingle(run_id); }
+      }, 800);
+    }
+
+    function pollCompare(runIds) {
+      clearTimeout(_pollTimer);
+      _pollTimer = setTimeout(async () => {
+        const results = await Promise.all(
+          runIds.map(({run_id}) => fetch(`/api/backtest/${run_id}`).then(r => r.json()))
+        );
+        const allDone = results.every(r => r.status !== 'running');
+        if (!allDone) { pollCompare(runIds); return; }
+        document.getElementById('btn-run').disabled = false;
+        renderCompare(results);
+        loadRuns();
+      }, 800);
+    }
+
+    // ── Render single result ─────────────────────────────────────────────────
+    function fmt(v, dec=2) { return v == null ? 'N/A' : (+v).toFixed(dec); }
+    function pct(v) { return v == null ? 'N/A' : (+(v)*100).toFixed(1) + '%'; }
+    function pill(status) {
+      const cls = {running:'pill-running', complete:'pill-complete', failed:'pill-failed'}[status] || '';
+      return `<span class="status-pill ${cls}">${status}</span>`;
+    }
+
+    function renderSingle(run) {
+      const s = run.summary || {};
+      const eq = s.equity_curve || [];
+      const dd = s.drawdown_curve || [];
+      const cb = s.calibration_buckets || [];
+      const isFailed = run.status === 'failed';
+
+      let html = `
+        <div class="panel" style="margin-bottom:18px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+            <span style="font-weight:600;font-size:1rem;">${run.strategy}</span>
+            ${pill(run.status)}
+          </div>`;
+
+      if (isFailed) {
+        html += `<div style="color:#dc2626;font-size:.9rem;">${s.error || 'Unknown error'}</div></div>`;
+        document.getElementById('results-panel').innerHTML = html;
+        return;
+      }
+
+      if (s.n_trades === 0) {
+        html += `<div class="placeholder" style="padding:20px;">No snapshots found in the selected date range and source.<br>
+          <span style="font-size:.85rem;">Try a wider range or trigger a snapshot poll.</span></div></div>`;
+        document.getElementById('results-panel').innerHTML = html;
+        return;
+      }
+
+      html += `</div>
+        <div class="metric-grid">
+          ${metricCard('Realized P&amp;L', '$' + fmt(s.realized_pnl))}
+          ${metricCard('Max Drawdown', '$' + fmt(s.max_drawdown))}
+          ${metricCard('Hit Rate', pct(s.hit_rate))}
+          ${metricCard('EV Error', '$' + fmt(s.ev_error))}
+          ${metricCard('Brier Score', fmt(s.brier_score, 4))}
+          ${metricCard('Trades', `${s.n_resolved}/${s.n_trades} resolved`)}
+        </div>
+        <div class="chart-wrap"><div id="chart-equity"></div></div>
+        <div class="chart-wrap"><div id="chart-dd"></div></div>`;
+
+      if (cb.length > 0) {
+        html += `<div class="chart-wrap"><div id="chart-calib" class="calib-chart"></div></div>`;
+      }
+
+      document.getElementById('results-panel').innerHTML = html;
+
+      if (eq.length) {
+        Plotly.newPlot('chart-equity', [{
+          x: eq.map(p => p.t), y: eq.map(p => p.equity),
+          type: 'scatter', mode: 'lines',
+          line: {color: '#6366f1', width: 2},
+          fill: 'tozeroy', fillcolor: 'rgba(99,102,241,0.08)',
+          name: 'Equity',
+        }], {
+          title: {text:'Equity Curve', font:{size:13}},
+          xaxis: {title:'Time', showgrid:false},
+          yaxis: {title:'Cumulative P&L ($)'},
+          margin: {t:40, r:20, b:50, l:60},
+          paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+          font:{color:'#6b7280'},
+          height: 280,
+        }, {responsive:true, displayModeBar:false});
+      }
+
+      if (dd.length) {
+        Plotly.newPlot('chart-dd', [{
+          x: dd.map(p => p.t), y: dd.map(p => -p.drawdown),
+          type: 'scatter', mode: 'lines',
+          line: {color: '#ef4444', width: 2},
+          fill: 'tozeroy', fillcolor: 'rgba(239,68,68,0.08)',
+          name: 'Drawdown',
+        }], {
+          title: {text:'Rolling Drawdown', font:{size:13}},
+          xaxis: {title:'Time', showgrid:false},
+          yaxis: {title:'Drawdown ($)'},
+          margin: {t:40, r:20, b:50, l:60},
+          paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+          font:{color:'#6b7280'},
+          height: 240,
+        }, {responsive:true, displayModeBar:false});
+      }
+
+      if (cb.length) {
+        Plotly.newPlot('chart-calib', [
+          {x: cb.map(b=>b.prob_mid), y: cb.map(b=>b.actual_rate), type:'bar', name:'Actual', marker:{color:'#6366f1'}},
+          {x: cb.map(b=>b.prob_mid), y: cb.map(b=>b.predicted_rate), type:'scatter', mode:'lines', name:'Perfect', line:{color:'#e5e7eb', dash:'dot'}},
+        ], {
+          title: {text:'Calibration', font:{size:13}},
+          xaxis: {title:'Predicted Prob', tickformat:'.0%'},
+          yaxis: {title:'Actual Rate', range:[0,1]},
+          margin: {t:36, r:16, b:48, l:56},
+          paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+          font:{color:'#6b7280'}, height:220, showlegend:false,
+        }, {responsive:true, displayModeBar:false});
+      }
+    }
+
+    function metricCard(label, val) {
+      return `<div class="metric-card"><div class="val">${val}</div><div class="lbl">${label}</div></div>`;
+    }
+
+    // ── Render compare ───────────────────────────────────────────────────────
+    function renderCompare(runs) {
+      const cards = runs.map(run => {
+        const s = run.summary || {};
+        if (run.status === 'failed') return `
+          <div class="compare-card">
+            <h3>${run.strategy}</h3>
+            <div style="color:#dc2626;font-size:.82rem;">${s.error || 'Failed'}</div>
+          </div>`;
+        return `
+          <div class="compare-card">
+            <h3>${run.strategy}</h3>
+            ${compareRow('Realized P&L', '$' + fmt(s.realized_pnl))}
+            ${compareRow('Max Drawdown', '$' + fmt(s.max_drawdown))}
+            ${compareRow('Hit Rate', pct(s.hit_rate))}
+            ${compareRow('EV Error', '$' + fmt(s.ev_error))}
+            ${compareRow('Brier Score', fmt(s.brier_score, 4))}
+            ${compareRow('Resolved Trades', s.n_resolved + '/' + s.n_trades)}
+          </div>`;
+      }).join('');
+
+      const eqData = runs.filter(r => r.summary?.equity_curve?.length).map(run => ({
+        x: run.summary.equity_curve.map(p => p.t),
+        y: run.summary.equity_curve.map(p => p.equity),
+        type: 'scatter', mode: 'lines', name: run.strategy,
+      }));
+
+      document.getElementById('results-panel').innerHTML = `
+        <div class="panel" style="margin-bottom:18px;">
+          <h2>Strategy Comparison</h2>
+          <div class="compare-grid">${cards}</div>
+          ${eqData.length ? '<div id="chart-compare"></div>' : ''}
+        </div>`;
+
+      if (eqData.length) {
+        Plotly.newPlot('chart-compare', eqData, {
+          title: {text:'Equity Curves — All Strategies', font:{size:13}},
+          xaxis: {title:'Time', showgrid:false},
+          yaxis: {title:'Cumulative P&L ($)'},
+          margin: {t:40, r:20, b:50, l:60},
+          paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+          font:{color:'#6b7280'}, height:300,
+          legend: {orientation:'h', y:-0.2},
+        }, {responsive:true, displayModeBar:false});
+      }
+    }
+
+    function compareRow(label, val) {
+      return `<div class="row"><span>${label}</span><span>${val}</span></div>`;
+    }
+
+    // ── Recent runs list ─────────────────────────────────────────────────────
+    async function loadRuns() {
+      const r = await fetch('/api/backtest?limit=15');
+      const d = await r.json();
+      const container = document.getElementById('runs-list');
+      if (!d.runs.length) { container.innerHTML = '<div class="placeholder" style="padding:12px;">No runs yet.</div>'; return; }
+      const rows = d.runs.map(run => {
+        const s = run.summary || {};
+        const pnl = s.realized_pnl != null ? '$'+fmt(s.realized_pnl) : '—';
+        const started = new Date(run.started_at_utc).toLocaleString();
+        const cls = run.run_id === _activeRunId ? ' selected' : '';
+        return `<tr class="${cls}" onclick="loadRun('${run.run_id}')">
+          <td>${run.strategy.replace('external_hedge','ext_hedge').replace('internal_reprice','int_reprice')}</td>
+          <td>${pill(run.status)}</td>
+          <td style="text-align:right;">${pnl}</td>
+        </tr>`;
+      }).join('');
+      container.innerHTML = `
+        <table class="runs-table">
+          <thead><tr><th>Strategy</th><th>Status</th><th style="text-align:right;">P&L</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+
+    async function loadRun(run_id) {
+      _activeRunId = run_id;
+      const r = await fetch(`/api/backtest/${run_id}`);
+      const d = await r.json();
+      if (d.status === 'running') { showRunning(d.strategy); pollSingle(run_id); }
+      else renderSingle(d);
+    }
+
+    async function pollNow() {
+      try {
+        const r = await fetch('/api/backtest/snapshot/poll', {method:'POST'});
+        const d = await r.json();
+        const total = Object.values(d.counts).reduce((a,b)=>a+b,0);
+        loadSnapshotCount();
+        alert(`Snapshot poll complete. ${total} markets captured.`);
+      } catch (e) { alert('Poll failed: ' + e); }
+    }
+
+    loadRuns();
+  </script>
+</body>
+</html>

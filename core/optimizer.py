@@ -19,6 +19,8 @@ def _objective_score(metrics: StrategyMetrics, objective: str) -> float:
         return metrics.cvar_95
     if objective == "min_max_loss":
         return metrics.max_loss
+    if objective == "max_ev":
+        return metrics.ev
     if objective == "max_sharpe":
         spread = max(metrics.p95 - metrics.p5, 1e-9)
         return metrics.ev / spread

@@ -60,9 +60,12 @@
     <span class="site-nav-logo">ProbEdge</span>
     <div class="site-nav-links">
       <a class="site-nav-link" href="/event-markets">Event Markets Intelligence</a>
+      <a class="site-nav-link" href="/event-markets#curve" style="font-size:10px;opacity:.65;padding-left:4px;padding-right:4px;">↳ Curve</a>
       <a class="site-nav-link" href="/hedging-simulator">Sportsbook Hedge Simulator</a>
       <a class="site-nav-link" href="/probability-gap">Probability Gap Dashboard</a>
       <a class="site-nav-link" href="/contract-library">Event Contract Library</a>
+      <a class="site-nav-link" href="/backtest">Historical Backtesting</a>
+      <a class="site-nav-link" href="/reports">Weekly Reports</a>
     </div>
   `;
 

@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.135.1",
     "gunicorn>=25.1.0",
+    "httpx>=0.28.1",
     "matplotlib>=3.10.8",
     "numpy>=2.4.2",
     "plotly>=6.6.0",

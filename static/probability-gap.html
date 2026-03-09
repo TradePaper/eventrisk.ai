@@ -553,6 +553,214 @@
   }
 
   loadFeed('mock');
+
+  // ---------------------------------------------------------------------------
+  // Live Divergence Engine
+  // ---------------------------------------------------------------------------
+
+  let _divRefreshTimer = null;
+
+  function switchDivMode() {
+    const mode = document.querySelector('input[name="div-mode"]:checked').value;
+    document.getElementById('div-anchor-wrap').style.display = mode === 'anchor' ? 'flex' : 'none';
+    document.getElementById('div-pair-wrap').style.display   = mode === 'pair'   ? 'flex' : 'none';
+    loadDivergences();
+  }
+
+  function _buildDivURL() {
+    const mode        = document.querySelector('input[name="div-mode"]:checked').value;
+    const sport       = document.getElementById('div-sport').value;
+    const minConf     = parseFloat(document.getElementById('div-min-conf').value) || 0;
+    const limit       = parseInt(document.getElementById('div-limit').value, 10) || 15;
+    const params      = new URLSearchParams({ limit, min_confidence: minConf });
+    if (sport) params.set('sport', sport);
+    if (mode === 'anchor') {
+      params.set('source', document.getElementById('div-anchor').value);
+    } else {
+      params.set('source1', document.getElementById('div-src1').value);
+      params.set('source2', document.getElementById('div-src2').value);
+    }
+    return '/api/divergence/top?' + params.toString();
+  }
+
+  async function loadDivergences() {
+    const container = document.getElementById('div-table-wrap');
+    container.innerHTML = '<div style="color:var(--text-dim);padding:14px 0;font-size:12px;">Loading…</div>';
+    clearTimeout(_divRefreshTimer);
+    try {
+      const r = await fetch(_buildDivURL());
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      document.getElementById('div-timestamp').textContent =
+        data.timestamp_utc ? 'Updated ' + new Date(data.timestamp_utc).toLocaleTimeString()
+                           + (data.sources_compared?.length ? ' · ' + data.sources_compared.join(', ') : '')
+                           : '';
+      if (!data.divergences.length) {
+        const tip = data.sport_filter
+          ? `No ${data.sport_filter.toUpperCase()} markets with divergences found. Try removing the sport filter or lowering min-confidence.`
+          : 'No divergences found. Try a lower min-gap, different sources, or remove filters.';
+        container.innerHTML = `<div style="color:var(--text-dim);padding:14px 0;font-size:12px;">${tip}</div>`;
+        _divRefreshTimer = setTimeout(loadDivergences, 30_000);
+        return;
+      }
+
+      // Derive column header labels from first result
+      const d0 = data.divergences[0];
+      const col1 = d0.source1 || 'Source 1';
+      const col2 = d0.source2 || 'Source 2';
+
+      container.innerHTML = `
+        <table class="div-table">
+          <thead>
+            <tr>
+              <th>Event</th>
+              <th style="font-size:10px;text-transform:uppercase;letter-spacing:.5px">Sport</th>
+              <th>${escHtml(col1)}</th>
+              <th>${escHtml(col2)}</th>
+              <th>Gap (pp)</th>
+              <th>Confidence</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${data.divergences.map(d => `
+              <tr>
+                <td class="div-title" title="${escHtml(d.title)}">${escHtml(d.title.length > 44 ? d.title.slice(0,42)+'…' : d.title)}</td>
+                <td style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px">${d.sport || '—'}</td>
+                <td class="div-prob">${(d.prob1*100).toFixed(1)}¢</td>
+                <td class="div-prob">${(d.prob2*100).toFixed(1)}¢</td>
+                <td class="div-gap ${d.gap_pct >= 5 ? 'gap-high' : d.gap_pct >= 2 ? 'gap-mid' : ''}">${d.gap_pct >= 0 ? '+' : ''}${d.gap_pct.toFixed(2)}</td>
+                <td>
+                  <div class="conf-bar-wrap">
+                    <div class="conf-bar" style="width:${(d.confidence*100).toFixed(0)}%"></div>
+                  </div>
+                  <span class="conf-label">${(d.confidence*100).toFixed(0)}%</span>
+                </td>
+                <td class="div-action">${escHtml(d.action.replace('buy_','BUY ').toUpperCase())}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>`;
+    } catch (err) {
+      container.innerHTML = `<div style="color:var(--red);padding:10px 0;font-size:12px;">Failed: ${err.message}</div>`;
+    }
+    clearTimeout(_divRefreshTimer);
+    _divRefreshTimer = setTimeout(loadDivergences, 30_000);
+  }
+
+  loadDivergences();
 </script>
+
+<!-- LIVE DIVERGENCE SECTION -->
+<div class="div-section">
+  <div class="div-header">
+    <div>
+      <div class="div-title-row">Live Divergences <span class="div-badge">AUTO-REFRESH 30s</span></div>
+      <div class="div-subtitle">Cross-source probability gaps matched by title similarity</div>
+    </div>
+    <div class="div-controls" style="flex-wrap:wrap;gap:8px">
+      <!-- Mode toggle -->
+      <label class="div-mode-lbl">
+        <input type="radio" name="div-mode" value="anchor" checked onchange="switchDivMode()"> Anchor
+      </label>
+      <label class="div-mode-lbl">
+        <input type="radio" name="div-mode" value="pair" onchange="switchDivMode()"> Pair
+      </label>
+
+      <!-- Anchor mode -->
+      <div id="div-anchor-wrap" style="display:flex;align-items:center;gap:6px">
+        <select id="div-anchor" class="div-select" onchange="loadDivergences()">
+          <option value="mock">Mock</option>
+          <option value="polymarket" selected>Polymarket</option>
+          <option value="kalshi">Kalshi</option>
+        </select>
+        <span style="color:var(--text-dim);font-size:11px">vs all</span>
+      </div>
+
+      <!-- Pair mode -->
+      <div id="div-pair-wrap" style="display:none;align-items:center;gap:6px">
+        <select id="div-src1" class="div-select" onchange="loadDivergences()">
+          <option value="mock" selected>Mock</option>
+          <option value="polymarket">Polymarket</option>
+          <option value="kalshi">Kalshi</option>
+        </select>
+        <span style="color:var(--text-dim);font-size:11px">vs</span>
+        <select id="div-src2" class="div-select" onchange="loadDivergences()">
+          <option value="mock">Mock</option>
+          <option value="polymarket" selected>Polymarket</option>
+          <option value="kalshi">Kalshi</option>
+        </select>
+      </div>
+
+      <!-- Sport filter -->
+      <select id="div-sport" class="div-select" onchange="loadDivergences()" title="Filter by sport / category">
+        <option value="">All sports</option>
+        <option value="nfl">NFL</option>
+        <option value="nba">NBA</option>
+        <option value="mlb">MLB</option>
+        <option value="nhl">NHL</option>
+        <option value="soccer">Soccer</option>
+        <option value="ufc">UFC</option>
+        <option value="politics">Politics</option>
+        <option value="crypto">Crypto</option>
+        <option value="finance">Finance</option>
+        <option value="tennis">Tennis</option>
+        <option value="golf">Golf</option>
+      </select>
+
+      <!-- Min confidence -->
+      <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px">
+        Min conf
+        <input type="number" id="div-min-conf" value="0" min="0" max="1" step="0.05"
+               style="width:54px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px"
+               onchange="loadDivergences()">
+      </label>
+
+      <!-- Limit -->
+      <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px">
+        Limit
+        <input type="number" id="div-limit" value="15" min="1" max="100" step="5"
+               style="width:50px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);padding:3px 6px;border-radius:4px;font-size:11px"
+               onchange="loadDivergences()">
+      </label>
+
+      <button class="div-refresh-btn" onclick="loadDivergences()">↻ Refresh</button>
+      <span class="div-ts" id="div-timestamp"></span>
+    </div>
+  </div>
+  <div id="div-table-wrap"></div>
+</div>
+
+<style>
+  .div-section {
+    max-width: 1100px; margin: 0 auto 40px; padding: 0 32px;
+  }
+  .div-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px; margin-bottom: 14px;
+  }
+  .div-title-row { font-size: 13px; font-weight: 700; color: #e2eaf4; display: flex; align-items: center; gap: 8px; }
+  .div-badge { font-size: 9px; background: var(--accent); color: #fff; padding: 2px 7px; border-radius: 10px; letter-spacing: .5px; }
+  .div-subtitle { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+  .div-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .div-mode-lbl { font-size: 11px; color: var(--text-dim); display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .div-select { background: var(--surface2); border: 1px solid var(--border2); border-radius: 5px; color: var(--text); padding: 5px 8px; font-size: 12px; }
+  .div-refresh-btn { background: var(--surface2); border: 1px solid var(--border2); border-radius: 5px; color: var(--text-dim); padding: 5px 10px; font-size: 12px; cursor: pointer; }
+  .div-refresh-btn:hover { color: var(--text); }
+  .div-ts { font-size: 11px; color: var(--text-mute); }
+  .div-table { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .div-table th { text-align: left; padding: 10px 14px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--text-dim); background: var(--surface2); border-bottom: 1px solid var(--border); }
+  .div-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); color: var(--text); }
+  .div-table tr:last-child td { border-bottom: none; }
+  .div-table tr:hover td { background: color-mix(in srgb, var(--accent) 4%, transparent); }
+  .div-title { max-width: 300px; }
+  .div-prob { font-family: var(--mono); color: var(--accent); }
+  .div-gap { font-family: var(--mono); font-weight: 700; color: var(--green); }
+  .div-gap.gap-high { color: #f59e0b; }
+  .div-gap.gap-mid  { color: #22c55e; }
+  .div-action { font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: .5px; }
+  .conf-bar-wrap { width: 60px; height: 5px; background: var(--border); border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 5px; }
+  .conf-bar { height: 100%; background: var(--accent); border-radius: 3px; }
+  .conf-label { font-size: 11px; color: var(--text-dim); vertical-align: middle; }
+</style>
 </body>
 </html>

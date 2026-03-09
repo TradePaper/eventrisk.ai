@@ -274,63 +274,338 @@ class TestStrategyComparisonFairSeed:
 
 
 # ---------------------------------------------------------------------------
-# Interactive endpoint acceptance tests
+# 6. Article-critical endpoint behaviour
 # ---------------------------------------------------------------------------
 
-from fastapi.testclient import TestClient
-from catalog_app import app
+class TestInteractiveEndpointArticle:
+    """Tests that protect article-reproducibility promises."""
 
+    def _client(self):
+        from fastapi.testclient import TestClient
+        import catalog_app
+        return TestClient(catalog_app.app)
 
-class TestInteractiveRiskTransferEndpoint:
-    @staticmethod
-    def _payload(seed="article-seed"):
+    def _payload(self, seed="article_test", n_paths=200):
         return {
-            "liability_range": [20_000_000, 40_000_000, 80_000_000, 120_000_000],
-            "true_probability": 0.60,
-            "prediction_market_price": 0.58,
-            "liquidity": 12_000_000,
-            "fill_probability": 0.90,
-            "n_paths": 500,
-            "seed": seed,
-            "objective": "min_cvar",
-            "strategy": "external_hedge",
             "strategy_modes": ["external_hedge", "internal_reprice", "hybrid"],
+            "objective": "min_cvar",
+            "liabilities": [500, 1000, 2000],
+            "base_input": {
+                "stake": 100,
+                "american_odds": -110,
+                "true_win_prob": 0.54,
+                "fill_probability": 0.85,
+                "slippage_bps": 8,
+                "fee_bps": 2,
+                "latency_bps": 3,
+                "n_paths": n_paths,
+                "seed": seed,
+                "liquidity": {
+                    "available_liquidity": 1000000,
+                    "participation_rate": 0.2,
+                    "impact_factor": 0.6,
+                    "depth_exponent": 1.0,
+                },
+            },
         }
 
-    def test_deterministic_endpoint_same_seed_same_curve_points(self):
-        client = TestClient(app)
-        p = self._payload(seed="deterministic-1")
-        r1 = client.post("/api/risk-transfer/interactive", json=p)
-        r2 = client.post("/api/risk-transfer/interactive", json=p)
-        assert r1.status_code == 200
-        assert r2.status_code == 200
-        j1 = r1.json()
-        j2 = r2.json()
-        assert j1["curve_points"] == j2["curve_points"]
+    def test_deterministic_same_seed_same_response(self):
+        client = self._client()
+        payload = self._payload(seed="repro_seed_42")
+        r1 = client.post("/api/risk-transfer/interactive/v2", json=payload).json()
+        r2 = client.post("/api/risk-transfer/interactive/v2", json=payload).json()
+        for s1, s2 in zip(r1["series"], r2["series"]):
+            assert s1["strategy"] == s2["strategy"]
+            for p1, p2 in zip(s1["points"], s2["points"]):
+                assert p1["ev"]       == p2["ev"],      "EV must be deterministic"
+                assert p1["cvar_95"]  == p2["cvar_95"], "CVaR-95 must be deterministic"
+                assert p1["max_loss"] == p2["max_loss"],"max_loss must be deterministic"
+                assert p1["optimal_hedge_ratio"] == p2["optimal_hedge_ratio"]
 
-    def test_metadata_presence(self):
-        client = TestClient(app)
-        r = client.post("/api/risk-transfer/interactive", json=self._payload())
-        assert r.status_code == 200
-        m = r.json()["scenario_metadata"]
-        for k in ("seed", "n_paths", "timestamp_utc", "simulator_version", "source"):
-            assert k in m
+    def test_scenario_metadata_present(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive/v2", json=self._payload()).json()
+        sc = r["scenario"]
+        assert "seed"             in sc
+        assert "n_paths"          in sc
+        assert "fill_probability" in sc
+        assert "timestamp_utc"    in sc
+        assert r["objective"] == "min_cvar"
 
-    def test_csv_row_consistency_from_curve_points(self):
-        client = TestClient(app)
-        r = client.post("/api/risk-transfer/interactive", json=self._payload())
-        assert r.status_code == 200
-        points = r.json()["curve_points"]
-        rows = [["liability", "hedge_ratio", "ev", "cvar", "max_loss"]]
-        rows.extend([[p["liability"], p["hedge_ratio"], p["ev"], p["cvar"], p["max_loss"]] for p in points])
-        assert len(rows) == len(points) + 1
-        assert rows[0] == ["liability", "hedge_ratio", "ev", "cvar", "max_loss"]
+    def test_export_row_consistency(self):
+        """CSV rows = strategies × liabilities (3 × 3 = 9 in payload above)."""
+        client = self._client()
+        payload = self._payload()
+        r = client.post("/api/risk-transfer/interactive/v2", json=payload).json()
+        n_strats    = len(payload["strategy_modes"])
+        n_liabs     = len(payload["liabilities"])
+        total_pts   = sum(len(s["points"]) for s in r["series"])
+        assert total_pts == n_strats * n_liabs, (
+            f"Expected {n_strats * n_liabs} points, got {total_pts}"
+        )
 
-    def test_hedge_ratio_monotonicity_min_cvar(self):
-        client = TestClient(app)
-        r = client.post("/api/risk-transfer/interactive", json=self._payload(seed="mono-seed"))
+    def test_superbowl_preset_is_stable(self):
+        """The canonical superbowl_v1 seed must produce consistent EV ordering."""
+        client = self._client()
+        payload = self._payload(seed="superbowl_v1", n_paths=500)
+        payload["liabilities"] = [500, 1000, 2000, 4000, 8000]
+        r = client.post("/api/risk-transfer/interactive/v2", json=payload).json()
+        # All series present
+        strategies = {s["strategy"] for s in r["series"]}
+        assert strategies == {"external_hedge", "internal_reprice", "hybrid"}
+        # Each series has 5 points
+        for s in r["series"]:
+            assert len(s["points"]) == 5
+
+
+class TestDistributionEndpoint:
+    """Tests for the tail-risk distribution overlay endpoint."""
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        import catalog_app
+        return TestClient(catalog_app.app)
+
+    def _payload(self, strategy="external_hedge", hf=0.5):
+        return {
+            "strategy": strategy,
+            "liability": 2000.0,
+            "hedge_fraction": hf,
+            "base_input": {
+                "stake": 100,
+                "american_odds": -110,
+                "true_win_prob": 0.54,
+                "fill_probability": 0.85,
+                "slippage_bps": 8,
+                "fee_bps": 2,
+                "latency_bps": 3,
+                "n_paths": 200,
+                "seed": "dist_test",
+                "liquidity": {
+                    "available_liquidity": 1000000,
+                    "participation_rate": 0.2,
+                    "impact_factor": 0.6,
+                    "depth_exponent": 1.0,
+                },
+            },
+        }
+
+    def test_response_has_correct_top_level_keys(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/distribution", json=self._payload()).json()
+        for key in ("strategy", "liability", "hedge_fraction", "n_paths", "unhedged", "hedged"):
+            assert key in r, f"Missing key: {key}"
+
+    def test_histogram_keys_present(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/distribution", json=self._payload()).json()
+        for side in ("unhedged", "hedged"):
+            h = r[side]
+            for key in ("bin_mids", "bin_edges", "counts", "ev", "cvar_95", "max_loss"):
+                assert key in h, f"Missing {key} in {side}"
+
+    def test_bin_count_is_30(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/distribution", json=self._payload()).json()
+        assert len(r["unhedged"]["bin_mids"]) == 30
+        assert len(r["hedged"]["bin_mids"])   == 30
+
+    def test_hedging_reduces_cvar(self):
+        """Hedged CVaR should be less negative (better) than unhedged for external_hedge."""
+        client = self._client()
+        r = client.post("/api/risk-transfer/distribution", json=self._payload(hf=0.8)).json()
+        assert r["hedged"]["cvar_95"] >= r["unhedged"]["cvar_95"] - 0.01, (
+            "Hedging should not worsen CVaR significantly"
+        )
+
+    def test_unknown_strategy_returns_400(self):
+        client = self._client()
+        payload = self._payload()
+        payload["strategy"] = "nonexistent_strategy"
+        r = client.post("/api/risk-transfer/distribution", json=payload)
+        assert r.status_code == 400
+
+
+class TestMaxEvObjective:
+    """max_ev objective should find the hedge_fraction that maximises EV."""
+
+    def test_max_ev_in_valid_objectives(self):
+        from fastapi.testclient import TestClient
+        import catalog_app
+        client = TestClient(catalog_app.app)
+        r = client.post("/api/risk-transfer/interactive/v2", json={
+            "strategy_modes": ["external_hedge"],
+            "objective": "max_ev",
+            "liabilities": [1000, 2000],
+            "base_input": {
+                "stake": 100, "american_odds": -110, "true_win_prob": 0.54,
+                "fill_probability": 1.0, "slippage_bps": 5, "fee_bps": 1,
+                "latency_bps": 1, "n_paths": 200, "seed": "max_ev_test",
+                "liquidity": {"available_liquidity": 500000, "participation_rate": 0.3,
+                              "impact_factor": 0.5, "depth_exponent": 1.0},
+            },
+        })
         assert r.status_code == 200
-        points = r.json()["curve_points"]
-        ratios = [p["hedge_ratio"] for p in points]
-        for i in range(len(ratios) - 1):
-            assert ratios[i + 1] >= ratios[i] - 1e-9
+        d = r.json()
+        assert d["objective"] == "max_ev"
+
+    def test_max_ev_paths_in_response(self):
+        from fastapi.testclient import TestClient
+        import catalog_app
+        client = TestClient(catalog_app.app)
+        r = client.post("/api/risk-transfer/interactive/v2", json={
+            "strategy_modes": ["external_hedge"],
+            "objective": "max_ev",
+            "liabilities": [2000],
+            "base_input": {
+                "stake": 100, "american_odds": -110, "true_win_prob": 0.54,
+                "fill_probability": 0.85, "slippage_bps": 8, "fee_bps": 2,
+                "latency_bps": 3, "n_paths": 200, "seed": "paths_test",
+                "liquidity": {"available_liquidity": 1000000, "participation_rate": 0.2,
+                              "impact_factor": 0.6, "depth_exponent": 1.0},
+            },
+        })
+        d = r.json()
+        pt = d["series"][0]["points"][0]
+        assert "unhedged_paths" in pt, "unhedged_paths must be in each point"
+        assert "hedged_paths"   in pt, "hedged_paths must be in each point"
+        assert len(pt["unhedged_paths"]) == 200
+        assert len(pt["hedged_paths"])   == 200
+
+    def test_max_ev_chooses_higher_hedge_than_zero_when_beneficial(self):
+        """With fill_prob=1.0 and true_win_prob > implied_prob, max_ev should hedge."""
+        from fastapi.testclient import TestClient
+        import catalog_app
+        client = TestClient(catalog_app.app)
+        r = client.post("/api/risk-transfer/interactive/v2", json={
+            "strategy_modes": ["external_hedge"],
+            "objective": "max_ev",
+            "liabilities": [2000],
+            "base_input": {
+                "stake": 100, "american_odds": -110, "true_win_prob": 0.54,
+                "fill_probability": 1.0, "slippage_bps": 2, "fee_bps": 1,
+                "latency_bps": 1, "n_paths": 500, "seed": "max_ev_hedge_test",
+                "liquidity": {"available_liquidity": 1000000, "participation_rate": 0.5,
+                              "impact_factor": 0.1, "depth_exponent": 1.0},
+            },
+        })
+        d = r.json()
+        hf = d["series"][0]["points"][0]["optimal_hedge_ratio"]
+        assert hf > 0.0, f"max_ev should hedge when fills are certain; got hf={hf}"
+
+
+class TestInteractiveV3Endpoint:
+    """Tests for the article-first v3 flat-field endpoint."""
+
+    def _client(self):
+        from fastapi.testclient import TestClient
+        import catalog_app
+        return TestClient(catalog_app.app)
+
+    def _payload(self, **overrides):
+        base = {
+            "liability_min": 500,
+            "liability_max": 4000,
+            "n_points": 4,
+            "true_probability": 0.54,
+            "prediction_market_price": 0.48,
+            "fill_probability": 0.85,
+            "objective": "max_ev",
+            "strategy": "external_hedge",
+            "seed": "v3_test",
+            "n_paths": 100,
+        }
+        base.update(overrides)
+        return base
+
+    def test_top_level_keys_present(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload()).json()
+        for key in ("scenario_metadata", "curve_points", "liquidity_cap", "distributions", "collapse_flags"):
+            assert key in r, f"Missing top-level key: {key}"
+
+    def test_scenario_metadata_fields(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload()).json()
+        sm = r["scenario_metadata"]
+        for key in ("seed", "n_paths", "timestamp_utc", "simulator_version", "source"):
+            assert key in sm
+        assert sm["simulator_version"] == "v1.2"
+        assert sm["source"] == "probedge_mc"
+
+    def test_curve_points_count_and_order(self):
+        client = self._client()
+        payload = self._payload(n_points=5)
+        r = client.post("/api/risk-transfer/interactive", json=payload).json()
+        pts = r["curve_points"]
+        assert len(pts) == 5
+        liabs = [p["liability"] for p in pts]
+        assert liabs == sorted(liabs), "curve_points must be in ascending liability order"
+
+    def test_curve_point_keys(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload()).json()
+        pt = r["curve_points"][0]
+        for key in ("liability", "hedge_ratio", "ev", "cvar", "max_loss", "liquidity_binding"):
+            assert key in pt, f"Missing curve_point key: {key}"
+
+    def test_liquidity_cap_present_when_liquidity_given(self):
+        client = self._client()
+        payload = self._payload()
+        payload["liquidity"] = {"available_liquidity": 500000, "participation_rate": 0.25,
+                                "impact_factor": 0.5, "depth_exponent": 1.0}
+        r = client.post("/api/risk-transfer/interactive", json=payload).json()
+        lc = r["liquidity_cap"]
+        assert lc is not None
+        assert lc["max_notional"] == 500000 * 0.25
+        assert "cap_liability" in lc
+
+    def test_liquidity_cap_none_when_no_liquidity(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload()).json()
+        assert r["liquidity_cap"] is None
+
+    def test_distributions_collapsed_when_n_paths_above_threshold(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload(n_paths=300)).json()
+        dist = r["distributions"]
+        assert dist["collapsed"] is True
+        assert "unhedged" in dist
+        assert "hedged" in dist
+        assert "bin_mids" in dist["unhedged"]
+        assert r["collapse_flags"]["distributions_collapsed"] is True
+
+    def test_distributions_inline_when_n_paths_at_or_below_threshold(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload(n_paths=100)).json()
+        dist = r["distributions"]
+        assert dist["collapsed"] is False
+        assert "unhedged_paths" in dist
+        assert "hedged_paths" in dist
+        assert len(dist["unhedged_paths"]) == 100
+        assert r["collapse_flags"]["distributions_collapsed"] is False
+
+    def test_deterministic_same_seed(self):
+        client = self._client()
+        payload = self._payload(seed="det_v3_test", n_paths=100)
+        r1 = client.post("/api/risk-transfer/interactive", json=payload).json()
+        r2 = client.post("/api/risk-transfer/interactive", json=payload).json()
+        for p1, p2 in zip(r1["curve_points"], r2["curve_points"]):
+            assert p1["ev"]         == p2["ev"]
+            assert p1["hedge_ratio"]== p2["hedge_ratio"]
+
+    def test_invalid_strategy_returns_400(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload(strategy="bad_strat"))
+        assert r.status_code == 400
+
+    def test_invalid_objective_returns_400(self):
+        client = self._client()
+        r = client.post("/api/risk-transfer/interactive", json=self._payload(objective="bad_obj"))
+        assert r.status_code == 400
+
+    def test_prob_to_american_conversion(self):
+        from catalog_app import _prob_to_american
+        assert _prob_to_american(0.5) == -100
+        assert _prob_to_american(0.909) < 0       # favourite should be negative
+        assert _prob_to_american(0.1) > 0          # underdog positive

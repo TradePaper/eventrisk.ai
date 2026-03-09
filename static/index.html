@@ -656,6 +656,64 @@
 
 </div>
 
+<!-- INTERACTIVE RISK TRANSFER CURVE v2 -->
+<div class="rtc-section" id="rtcSection" style="display:none">
+  <div class="rtc-header">
+    <div>
+      <span class="rtc-title">Interactive Risk Transfer Curve</span>
+      <span class="rtc-sub">EV, CVaR-95, and Max Loss vs hedge fraction — all strategies, multiple liability levels</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <label class="rtc-label">Strategies</label>
+      <div id="rtc-strategy-checks" style="display:flex;gap:6px">
+        <label class="rtc-check-lbl"><input type="checkbox" value="external_hedge" checked onchange="loadRTC()"> External</label>
+        <label class="rtc-check-lbl"><input type="checkbox" value="internal_reprice" checked onchange="loadRTC()"> Reprice</label>
+        <label class="rtc-check-lbl"><input type="checkbox" value="hybrid" checked onchange="loadRTC()"> Hybrid</label>
+      </div>
+      <label class="rtc-label">Objective</label>
+      <select id="rtc-objective" class="rtc-select" onchange="loadRTC()">
+        <option value="min_cvar">Min CVaR</option>
+        <option value="min_max_loss">Min Max Loss</option>
+        <option value="max_sharpe">Max Sharpe</option>
+        <option value="target_ev_min_risk">Target EV + Min Risk</option>
+      </select>
+      <label class="rtc-label">Metric</label>
+      <select id="rtc-metric" class="rtc-select" onchange="renderRTCChart()">
+        <option value="ev">EV</option>
+        <option value="cvar_95">CVaR-95</option>
+        <option value="max_loss">Max Loss</option>
+      </select>
+      <button class="rtc-btn" onclick="loadRTC()">↻ Refresh</button>
+    </div>
+  </div>
+  <!-- Liability tabs -->
+  <div id="rtc-liab-tabs" style="display:flex;gap:6px;padding:10px 20px 0;flex-wrap:wrap"></div>
+  <div id="rtc-chart" style="min-height:260px"></div>
+  <div id="rtc-status" style="font-size:11px;color:var(--text-dim);margin-top:4px;padding:0 20px 12px"></div>
+</div>
+
+<style>
+  .rtc-section {
+    max-width: 1200px; margin: 0 auto 32px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    overflow: hidden;
+  }
+  .rtc-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 14px 20px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 10px;
+  }
+  .rtc-title { font-size: 13px; font-weight: 700; color: #e2eaf4; display: block; margin-bottom: 3px; }
+  .rtc-sub   { font-size: 11px; color: var(--text-dim); }
+  .rtc-label { font-size: 11px; color: var(--text-dim); }
+  .rtc-select { background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 4px 7px; border-radius: 5px; font-size: 11px; }
+  .rtc-btn { background: var(--surface2); border: 1px solid var(--border2); color: var(--text-dim); padding: 4px 10px; border-radius: 5px; font-size: 11px; cursor: pointer; }
+  .rtc-btn:hover { color: var(--text); }
+  .rtc-check-lbl { font-size: 11px; color: var(--text-dim); display:flex; align-items:center; gap:4px; cursor:pointer; }
+  .rtc-liab-tab { padding: 4px 10px; border-radius: 4px; font-size: 11px; cursor:pointer; border: 1px solid var(--border2); background: var(--surface2); color: var(--text-dim); }
+  .rtc-liab-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #rtc-chart { padding: 0 4px; }
+</style>
+
 <!-- FEEDBACK MODAL -->
 <div class="modal-overlay" id="feedbackModal">
   <div class="modal">
@@ -908,6 +966,11 @@ function renderResults(data, params) {
 
   const chartData = JSON.parse(data.chartJson);
   Plotly.react('chart', chartData.data, chartData.layout, { responsive: true, displayModeBar: false });
+
+  // Show interactive RTC panel after any successful run
+  document.getElementById('rtcSection').style.display = '';
+  clearTimeout(_rtcDebounce);
+  _rtcDebounce = setTimeout(loadRTC, 200);
 }
 
 function card(label, value, type, sub) {
@@ -1002,6 +1065,136 @@ function showError(msg) {
   document.getElementById('resultsContent').style.display = 'block';
   document.getElementById('resultsPlaceholder').style.display = 'none';
 }
+
+// ---- INTERACTIVE RISK TRANSFER CURVE v2 ----
+let _rtcDebounce = null;
+let _rtcData = null;       // last full API response
+let _rtcLiability = null;  // currently selected liability
+
+const _STRAT_COLORS = {
+  external_hedge:   '#4ade80',
+  internal_reprice: '#60a5fa',
+  hybrid:           '#fb923c',
+};
+const _STRAT_LABELS = {
+  external_hedge:   'External Hedge',
+  internal_reprice: 'Internal Reprice',
+  hybrid:           'Hybrid',
+};
+
+function _collectRTCParams() {
+  const p = collectParams();
+  const odds = parseFloat(p.americanOdds) || -110;
+
+  // Four liability levels centred on the derived liability
+  const baseLiab = odds < 0 ? (-odds / 100) * p.stake : (100 / odds) * p.stake;
+  const liabilities = [0.25, 0.5, 1.0, 2.0, 4.0].map(m => Math.max(1, Math.round(baseLiab * m)));
+
+  const strategies = [...document.querySelectorAll('#rtc-strategy-checks input:checked')]
+    .map(el => el.value);
+  if (!strategies.length) return null;
+
+  return {
+    strategy_modes: strategies,
+    objective: document.getElementById('rtc-objective').value,
+    liabilities,
+    base_input: {
+      stake:           p.stake,
+      american_odds:   Math.round(odds),
+      true_win_prob:   p.trueWinProb,
+      fill_probability:p.fillProbability,
+      slippage_bps:    p.slippageBps,
+      fee_bps:         p.feeBps,
+      latency_bps:     p.latencyBps,
+      n_paths:         Math.min(p.nPaths || 300, 300),
+      seed:            String(p.seed || ''),
+    },
+  };
+}
+
+function renderRTCChart() {
+  if (!_rtcData) return;
+  const metric = document.getElementById('rtc-metric').value;
+  const metricLabels = {ev:'EV ($)', cvar_95:'CVaR-95 ($)', max_loss:'Max Loss ($)'};
+
+  const traces = [];
+  (_rtcData.series || []).forEach(s => {
+    const col  = _STRAT_COLORS[s.strategy] || '#aaa';
+    const lbl  = _STRAT_LABELS[s.strategy]  || s.strategy;
+    const pts  = s.points || [];
+
+    const x = pts.map(pt => pt.liability);
+    const y = pts.map(pt => pt[metric]);
+    const customdata = pts.map(pt => pt.optimal_hedge_ratio);
+
+    traces.push({
+      x, y,
+      name: lbl,
+      mode: 'lines+markers',
+      line:   {color: col, width: 2},
+      marker: {color: col, size: 6},
+      customdata,
+      hovertemplate:
+        `<b>${lbl}</b><br>Liability: $%{x:,.0f}<br>${metricLabels[metric]||metric}: %{y:,.2f}<br>Opt hedge: %{customdata:.0%}<extra></extra>`,
+    });
+
+    // Mark any collapsed-distribution points with an X
+    const collapsedPts = pts.filter(pt => pt.distribution_collapsed);
+    if (collapsedPts.length) {
+      traces.push({
+        x: collapsedPts.map(pt => pt.liability),
+        y: collapsedPts.map(pt => pt[metric]),
+        mode: 'markers',
+        marker: {color: '#ef4444', size: 10, symbol: 'x', line: {width: 2}},
+        name: lbl + ' (collapsed)',
+        showlegend: false,
+        hovertemplate: 'Distribution collapsed<extra></extra>',
+      });
+    }
+  });
+
+  Plotly.react('rtc-chart', traces, {
+    margin: {t:16, r:20, b:52, l:64},
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font: {color:'#5e7a9a', size:11},
+    xaxis: {title:'Liability ($)', tickformat:'$,.0f', showgrid:false, gridcolor:'#1a2840'},
+    yaxis: {title: metricLabels[metric] || metric, zeroline:true, zerolinecolor:'#243350', gridcolor:'#1a2840'},
+    legend: {orientation:'h', y:-0.22},
+    height: 290,
+  }, {responsive:true, displayModeBar:false});
+}
+
+async function loadRTC() {
+  const status = document.getElementById('rtc-status');
+  const body = _collectRTCParams();
+  if (!body) { status.textContent = 'Select at least one strategy.'; return; }
+
+  status.textContent = `Computing ${body.strategy_modes.length} strategies × ${body.liabilities.length} liability levels…`;
+  try {
+    const res = await fetch('/api/risk-transfer/interactive', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    _rtcData = await res.json();
+    document.getElementById('rtc-liab-tabs').innerHTML = ''; // tabs not used in this mode
+    renderRTCChart();
+
+    const sc = _rtcData.scenario || {};
+    const nSeries = (_rtcData.series || []).length;
+    status.textContent =
+      `${nSeries} strategies · ${sc.n_paths} paths · fill_prob ${sc.fill_probability} · `
+      + `objective: ${_rtcData.objective} · ${sc.timestamp_utc || new Date().toLocaleTimeString()}`;
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+  }
+}
+
+// RTC updates when form changes (debounced, only if panel is visible)
 
 // ---- INIT ----
 const didRestore = restoreFromURL();
