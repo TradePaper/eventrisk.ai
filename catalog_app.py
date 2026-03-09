@@ -51,6 +51,7 @@ DB_PATH = "tmp/contracts.db"
 
 app = FastAPI(title="ProbEdge Research")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/lib", StaticFiles(directory="lib"), name="lib")
 
 
 def _serve_page(path: str) -> str:

@@ -1,0 +1,49 @@
+{
+  "id": "weather",
+  "name": "Weather Hedge",
+  "paper_url": "https://eventrisk.ai/paper",
+  "meta": {
+    "event": "Seasonal Weather Derivative",
+    "stake_usd": 80000000,
+    "true_probability": 0.49,
+    "market_price": 0.46,
+    "liquidity_usd": 12000000,
+    "target_hedge_ratio": 0.50,
+    "simulation_count": 10000,
+    "seed": "weather_v1"
+  },
+  "step1": {
+    "title": "Figure 1 — Unhedged Liability Distribution",
+    "bins": [-80,-72,-64,-56,-48,-40,-32,-24,-16,-8,0,8],
+    "unhedged_density": [0.02,0.04,0.07,0.10,0.13,0.15,0.15,0.13,0.10,0.06,0.03,0.02],
+    "ev_m": -1.7,
+    "cvar95_m": -48.4,
+    "max_loss_m": -80.0
+  },
+  "step2": {
+    "title": "Figure 2 — Hedged vs Unhedged Distribution Overlay",
+    "bins": [-80,-72,-64,-56,-48,-40,-32,-24,-16,-8,0,8],
+    "unhedged_density": [0.02,0.04,0.07,0.10,0.13,0.15,0.15,0.13,0.10,0.06,0.03,0.02],
+    "hedged_density": [0.00,0.01,0.02,0.05,0.09,0.14,0.17,0.17,0.14,0.10,0.07,0.04],
+    "ev_unhedged_m": -1.7,
+    "ev_hedged_m": -2.6,
+    "cvar95_unhedged_m": -48.4,
+    "cvar95_hedged_m": -31.2,
+    "tail_reduction_pct": 35.5
+  },
+  "step3": {
+    "title": "Figure 3 — Liquidity-Constrained Risk Transfer Curve",
+    "points": [
+      {"liability_m": 16, "tail_risk_unhedged_m": 10.0, "tail_risk_hedged_m": 7.3, "hedge_utilization": 0.26, "feasibility": "green"},
+      {"liability_m": 32, "tail_risk_unhedged_m": 19.4, "tail_risk_hedged_m": 13.4, "hedge_utilization": 0.39, "feasibility": "green"},
+      {"liability_m": 48, "tail_risk_unhedged_m": 29.1, "tail_risk_hedged_m": 20.8, "hedge_utilization": 0.51, "feasibility": "yellow"},
+      {"liability_m": 64, "tail_risk_unhedged_m": 38.6, "tail_risk_hedged_m": 30.2, "hedge_utilization": 0.64, "feasibility": "yellow"},
+      {"liability_m": 80, "tail_risk_unhedged_m": 48.4, "tail_risk_hedged_m": 41.7, "hedge_utilization": 0.78, "feasibility": "red"}
+    ],
+    "zones": {
+      "green_max_utilization": 0.39,
+      "yellow_max_utilization": 0.69,
+      "labels": {"green": "Meaningful", "yellow": "Partial", "red": "Constrained"}
+    }
+  }
+}

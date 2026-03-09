@@ -1,0 +1,49 @@
+{
+  "id": "election",
+  "name": "Election",
+  "paper_url": "https://eventrisk.ai/paper",
+  "meta": {
+    "event": "US Presidential Election Winner",
+    "stake_usd": 150000000,
+    "true_probability": 0.53,
+    "market_price": 0.50,
+    "liquidity_usd": 25000000,
+    "target_hedge_ratio": 0.55,
+    "simulation_count": 10000,
+    "seed": "election_v1"
+  },
+  "step1": {
+    "title": "Figure 1 — Unhedged Liability Distribution",
+    "bins": [-150,-135,-120,-105,-90,-75,-60,-45,-30,-15,0,15],
+    "unhedged_density": [0.01,0.03,0.05,0.08,0.11,0.14,0.16,0.15,0.12,0.08,0.05,0.02],
+    "ev_m": -4.4,
+    "cvar95_m": -91.8,
+    "max_loss_m": -150.0
+  },
+  "step2": {
+    "title": "Figure 2 — Hedged vs Unhedged Distribution Overlay",
+    "bins": [-150,-135,-120,-105,-90,-75,-60,-45,-30,-15,0,15],
+    "unhedged_density": [0.01,0.03,0.05,0.08,0.11,0.14,0.16,0.15,0.12,0.08,0.05,0.02],
+    "hedged_density": [0.00,0.00,0.01,0.03,0.06,0.10,0.15,0.18,0.17,0.13,0.10,0.07],
+    "ev_unhedged_m": -4.4,
+    "ev_hedged_m": -6.3,
+    "cvar95_unhedged_m": -91.8,
+    "cvar95_hedged_m": -53.0,
+    "tail_reduction_pct": 42.3
+  },
+  "step3": {
+    "title": "Figure 3 — Liquidity-Constrained Risk Transfer Curve",
+    "points": [
+      {"liability_m": 30, "tail_risk_unhedged_m": 18.5, "tail_risk_hedged_m": 12.0, "hedge_utilization": 0.24, "feasibility": "green"},
+      {"liability_m": 60, "tail_risk_unhedged_m": 36.8, "tail_risk_hedged_m": 24.0, "hedge_utilization": 0.37, "feasibility": "green"},
+      {"liability_m": 90, "tail_risk_unhedged_m": 55.2, "tail_risk_hedged_m": 37.8, "hedge_utilization": 0.46, "feasibility": "yellow"},
+      {"liability_m": 120, "tail_risk_unhedged_m": 73.4, "tail_risk_hedged_m": 53.2, "hedge_utilization": 0.58, "feasibility": "yellow"},
+      {"liability_m": 150, "tail_risk_unhedged_m": 91.8, "tail_risk_hedged_m": 71.9, "hedge_utilization": 0.71, "feasibility": "red"}
+    ],
+    "zones": {
+      "green_max_utilization": 0.39,
+      "yellow_max_utilization": 0.69,
+      "labels": {"green": "Meaningful", "yellow": "Partial", "red": "Constrained"}
+    }
+  }
+}
