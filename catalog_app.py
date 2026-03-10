@@ -5,7 +5,7 @@ import json
 import threading
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -203,6 +203,14 @@ def backtest_page():
 @app.get("/reports", response_class=HTMLResponse)
 def reports_page():
     return _serve_page("static/reports.html")
+
+
+@app.get("/runtime-config.js")
+def runtime_config():
+    api_base = os.environ.get("API_BASE_URL", "")
+    js = f'window.__RUNTIME_CONFIG__ = {{"apiBaseUrl": "{api_base}"}};\n'
+    return Response(content=js, media_type="application/javascript",
+                    headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
 
 # ---------------------------------------------------------------------------
