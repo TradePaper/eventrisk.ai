@@ -1364,7 +1364,7 @@ def tier2_feasibility(inp: _Tier2In):
 
     result = build_feasibility_map(inp.target_hedge_ratio)
     return {
-        "title": "Figure 5 — Sportsbook Hedging Feasibility Map",
+        "title": "Figure 5 — Hedging Feasibility Map",
         **result,
     }
 

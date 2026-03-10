@@ -3,7 +3,7 @@ const FIGURE_TITLES = [
   "Figure 2 — Hedged vs Unhedged Distribution Overlay",
   "Figure 3 — Liquidity-Constrained Risk Transfer Curve",
   "Figure 4 — Hedging Efficiency Frontier",
-  "Figure 5 — Sportsbook Hedging Feasibility Map",
+  "Figure 5 — Hedging Feasibility Map",
   "Figure 6 — Preset Stress-Test Snapshot"
 ];
 
