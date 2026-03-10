@@ -32,6 +32,17 @@ class TestSimulatorRuntimeRoute:
         assert resp.headers["content-type"].startswith("application/javascript")
         assert 'apiBaseUrl": ""' in resp.text
 
+    def test_simulator_assets_are_served(self):
+        for route, content_type in (
+            ("/static/styles/simulator.css", "text/css"),
+            ("/static/scripts/simulator-app.mjs", "application/javascript"),
+            ("/static/scripts/api-client.mjs", "application/javascript"),
+            ("/static/scripts/simulator-state.mjs", "application/javascript"),
+        ):
+            resp = client.get(route)
+            assert resp.status_code == 200
+            assert resp.headers["content-type"].startswith(content_type)
+
     def test_status_contract_remains_ok(self):
         resp = client.get("/status")
         assert resp.status_code == 200
