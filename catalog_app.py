@@ -3,6 +3,7 @@ import os
 import dataclasses
 import json
 import threading
+import html
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -55,11 +56,45 @@ app.mount("/lib", StaticFiles(directory="lib"), name="lib")
 
 
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+DEFAULT_PAPER_URL = "https://eventrisk.ai/paper"
+PAPER_URL_ENV_KEY = "PAPER_URL"
+
+
+def _get_paper_url() -> str:
+    configured = os.environ.get(PAPER_URL_ENV_KEY)
+    if configured is None:
+        return DEFAULT_PAPER_URL
+    return configured.strip()
+
+
+def _paper_link(paper_url: str, label: str, *, class_name: str = "", element_id: str = "") -> str:
+    id_attr = f' id="{element_id}"' if element_id else ""
+    if paper_url:
+        href = html.escape(paper_url, quote=True)
+        class_attr = f' class="{class_name}"' if class_name else ""
+        return f'<a{id_attr}{class_attr} href="{href}" target="_blank" rel="noopener noreferrer">{label}</a>'
+    disabled_class = " ".join(filter(None, [class_name, "is-disabled"]))
+    class_attr = f' class="{disabled_class}"' if disabled_class else ""
+    return f'<span{id_attr}{class_attr} aria-disabled="true">{label}</span>'
+
+
+def _paper_link_tokens(paper_url: str) -> dict[str, str]:
+    return {
+        "__PAPER_LINK_EXPLAINER_NAV__": _paper_link(paper_url, "Read the paper", class_name="nav-link paper-out"),
+        "__PAPER_LINK_EXPLAINER_CTA__": _paper_link(paper_url, "Open Paper", class_name="cta-link secondary", element_id="ctaPaper"),
+        "__PAPER_LINK_EXPLAINER_FOOTER__": _paper_link(paper_url, "Paper link"),
+        "__PAPER_LINK_PAPER_NAV__": _paper_link(paper_url, "Read the paper", class_name="nav-link paper-out"),
+        "__PAPER_LINK_PAPER_FOOTER__": _paper_link(paper_url, "Paper link"),
+        "__PAPER_LINK_SIMULATOR_NAV__": _paper_link(paper_url, "Read the paper"),
+    }
 
 
 def _serve_page(path: str) -> HTMLResponse:
     with open(path) as f:
-        return HTMLResponse(content=f.read(), headers=_NO_CACHE)
+        content = f.read()
+        for token, markup in _paper_link_tokens(_get_paper_url()).items():
+            content = content.replace(token, markup)
+        return HTMLResponse(content=content, headers=_NO_CACHE)
 
 
 # ---------------------------------------------------------------------------
@@ -208,7 +243,8 @@ def reports_page():
 @app.get("/runtime-config.js")
 def runtime_config():
     api_base = os.environ.get("API_BASE_URL", "")
-    js = f'window.__RUNTIME_CONFIG__ = {{"apiBaseUrl": "{api_base}"}};\n'
+    paper_url = html.escape(_get_paper_url(), quote=True)
+    js = f'window.__RUNTIME_CONFIG__ = {{"apiBaseUrl": "{api_base}", "paperUrl": "{paper_url}"}};\n'
     return Response(content=js, media_type="application/javascript",
                     headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 

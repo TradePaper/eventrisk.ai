@@ -31,6 +31,15 @@ class TestSimulatorRuntimeRoute:
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("application/javascript")
         assert 'apiBaseUrl": ""' in resp.text
+        assert 'paperUrl": "https://eventrisk.ai/paper"' in resp.text
+
+    def test_paper_link_hides_when_paper_url_empty(self, monkeypatch):
+        monkeypatch.setenv("PAPER_URL", "   ")
+        text = client.get("/simulator").text
+        assert "Read the paper" in text
+        assert 'href=""' not in text
+        assert "<span" in text
+        assert "aria-disabled=\"true\"" in text
 
     def test_status_contract_remains_ok(self):
         resp = client.get("/status")
