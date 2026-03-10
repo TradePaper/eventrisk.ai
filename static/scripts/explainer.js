@@ -1,4 +1,3 @@
-const PAPER_URL = "https://eventrisk.ai/paper";
 const PRESETS = {
   superbowl: "/lib/presets/superbowl.json",
   election: "/lib/presets/election.json",
@@ -12,7 +11,6 @@ const backBtn = document.getElementById("btnBack");
 const nextBtn = document.getElementById("btnNext");
 const presetButtons = Array.from(document.querySelectorAll(".preset-btn"));
 const metaLine = document.getElementById("metaLine");
-const ctaPaper = document.getElementById("ctaPaper");
 
 let activeStep = 0;
 let activePreset = "superbowl";
@@ -151,8 +149,6 @@ async function loadPreset(presetKey) {
 
   presetButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.preset === presetKey));
   metaLine.textContent = `${activeData.meta.event} · Stake ${activeData.meta.stake_usd.toLocaleString()} · Sim count ${activeData.meta.simulation_count.toLocaleString()}`;
-  ctaPaper.href = activeData.paper_url || PAPER_URL;
-
   renderDistribution("step1Chart", activeData.step1.bins, activeData.step1.unhedged_density);
   renderDistribution("step2Chart", activeData.step2.bins, activeData.step2.unhedged_density, activeData.step2.hedged_density);
   renderRiskTransfer(activeData.step3.points);
