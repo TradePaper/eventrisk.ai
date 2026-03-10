@@ -123,7 +123,7 @@ const suites = [
       simulation_count:   500,
     });
     assert(status === 200,                                       "status 200");
-    assert(body.title === "Figure 5 — Sportsbook Hedging Feasibility Map", "title correct");
+    assert(body.title === "Figure 5 — Hedging Feasibility Map", "title correct");
     assert(Array.isArray(body.liabilities),                      "liabilities array present");
     assert(Array.isArray(body.liquidities),                      "liquidities array present");
     assert(Array.isArray(body.region_grid),                      "region_grid array present");

@@ -124,7 +124,7 @@ class TestTier2EndpointsAndPage:
         )
         assert r.status_code == 200
         payload = r.json()
-        assert payload["title"] == "Figure 5 — Sportsbook Hedging Feasibility Map"
+        assert payload["title"] == "Figure 5 — Hedging Feasibility Map"
         assert payload["labels"]["no_effective"] == "No Effective Hedging"
         assert payload["labels"]["partial"] == "Partial Hedging"
         assert payload["labels"]["meaningful"] == "Meaningful Hedging"

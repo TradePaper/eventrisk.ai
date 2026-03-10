@@ -1,9 +1,15 @@
+import re
+
 from fastapi.testclient import TestClient
 
 from catalog_app import app
 
 
 client = TestClient(app)
+PAPER_LINK_PATTERN = re.compile(r'<a[^>]*href="([^"]+)"[^>]*>(Read the paper|Open Paper|Paper link)</a>')
+SECURE_LINK_PATTERN = re.compile(
+    r'<a[^>]*href="([^"]+)"[^>]*target="_blank"[^>]*rel="noopener noreferrer"[^>]*>(Read the paper|Open Paper|Paper link)</a>'
+)
 
 
 FORBIDDEN_LEGACY = [
@@ -55,7 +61,8 @@ class TestRedesignRoutes:
         assert "Figure 2 — Hedged vs Unhedged Distribution Overlay" in text
         assert "Figure 3 — Liquidity-Constrained Risk Transfer Curve" in text
         assert "Figure 4 — Hedging Efficiency Frontier" in text
-        assert "Figure 5 — Sportsbook Hedging Feasibility Map" in text
+        assert "Figure 5 — Hedging Feasibility Map" in text
+        assert "Figure 5 — Sportsbook Hedging Feasibility Map" not in text
         assert "Figure 6 — Preset Stress-Test Snapshot" in text
 
     def test_redesigned_routes_hide_legacy_controls(self):
@@ -73,3 +80,14 @@ class TestRedesignRoutes:
         assert 'href="/simulator"' in text
         assert "Event Markets Intelligence" not in text
         assert "Sportsbook Hedge Simulator" not in text
+
+    def test_redesign_routes_use_same_paper_link_source(self):
+        expected = "https://eventrisk.ai/paper"
+        for route in ("/explainer", "/paper", "/simulator"):
+            text = client.get(route).text
+            links = PAPER_LINK_PATTERN.findall(text)
+            assert links, f"expected paper links on {route}"
+            assert all(href == expected for href, _ in links)
+            secure_links = SECURE_LINK_PATTERN.findall(text)
+            assert len(secure_links) == len(links)
+            assert 'href=""' not in text
