@@ -5,7 +5,7 @@ import json
 import threading
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -50,16 +50,40 @@ os.makedirs("tmp", exist_ok=True)
 DB_PATH = "tmp/contracts.db"
 
 app = FastAPI(title="ProbEdge Research")
-app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/lib", StaticFiles(directory="lib"), name="lib")
-
-
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 
 
 def _serve_page(path: str) -> HTMLResponse:
     with open(path) as f:
         return HTMLResponse(content=f.read(), headers=_NO_CACHE)
+
+
+def _serve_asset(path: str, media_type: str) -> FileResponse:
+    return FileResponse(path, media_type=media_type, headers=_NO_CACHE)
+
+
+@app.get("/static/styles/simulator.css")
+def simulator_styles() -> FileResponse:
+    return _serve_asset("static/styles/simulator.css", "text/css")
+
+
+@app.get("/static/scripts/simulator-app.mjs")
+def simulator_app_script() -> FileResponse:
+    return _serve_asset("static/scripts/simulator-app.mjs", "application/javascript")
+
+
+@app.get("/static/scripts/api-client.mjs")
+def api_client_script() -> FileResponse:
+    return _serve_asset("static/scripts/api-client.mjs", "application/javascript")
+
+
+@app.get("/static/scripts/simulator-state.mjs")
+def simulator_state_script() -> FileResponse:
+    return _serve_asset("static/scripts/simulator-state.mjs", "application/javascript")
+
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/lib", StaticFiles(directory="lib"), name="lib")
 
 
 # ---------------------------------------------------------------------------
