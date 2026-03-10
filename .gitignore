@@ -29,3 +29,4 @@ venv/
 .DS_Store
 *.log
 npm-debug.log*
+*.swp
