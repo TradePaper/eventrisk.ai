@@ -5,7 +5,7 @@ import json
 import threading
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -18,8 +18,6 @@ from providers import MockProvider, PolymarketProvider, KalshiProvider, CachedPr
 from core.types_v12 import SimulationInputV12, LiquidityModel, InternalRepriceModel
 from core.strategies import simulate_strategy, simulate_strategy_raw
 from core.optimizer import optimize_hedge_ratio, build_risk_transfer_curve
-from core.frontier import build_efficiency_frontier
-from core.feasibility import build_feasibility_map
 from core.analytics import capture as analytics_capture
 from backtest.db import (
     init_backtest_tables, get_snapshots, get_outcomes,
@@ -56,15 +54,12 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/lib", StaticFiles(directory="lib"), name="lib")
 
 
-def _serve_page(path: str) -> str:
+_NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
+
+def _serve_page(path: str) -> HTMLResponse:
     with open(path) as f:
-        return f.read()
-
-
-def _runtime_config_payload() -> dict:
-    return {
-        "apiBaseUrl": os.environ.get("EVENTRISK_API_BASE_URL", "").strip(),
-    }
+        return HTMLResponse(content=f.read(), headers=_NO_CACHE)
 
 
 # ---------------------------------------------------------------------------
@@ -178,15 +173,6 @@ def paper_page():
 @app.get("/simulator", response_class=HTMLResponse)
 def simulator_page():
     return _serve_page("static/simulator.html")
-
-
-@app.get("/runtime-config.js")
-def runtime_config():
-    payload = json.dumps(_runtime_config_payload())
-    return Response(
-        content=f"window.__EVENTRISK_RUNTIME_CONFIG__ = Object.freeze({payload});",
-        media_type="application/javascript",
-    )
 
 
 @app.get("/event-markets", response_class=HTMLResponse)
@@ -330,15 +316,6 @@ class RiskCurveIn(BaseModel):
     base: SimulateV12In
     liabilities: list
     strategy: str = "external_hedge"
-
-
-class Tier2ScenarioIn(BaseModel):
-    liability: float
-    liquidity: float
-    true_probability: float
-    market_price: float
-    target_hedge_ratio: float
-    simulation_count: int
 
 
 @app.post("/simulate/v12")
@@ -487,53 +464,6 @@ def get_risk_transfer(
         ),
         "scenario": _scenario_meta(inp),
         "points": points_out,
-    }
-
-
-def _tier2_base_input(params: Tier2ScenarioIn) -> SimulationInputV12:
-    p = min(max(params.market_price, 0.001), 0.999)
-    american_odds = int(-100 * p / (1 - p)) if p >= 0.5 else int(100 * (1 - p) / p)
-    return SimulationInputV12(
-        stake=max(params.liability, 1.0),
-        american_odds=american_odds,
-        true_win_prob=params.true_probability,
-        hedge_fraction=params.target_hedge_ratio,
-        fill_probability=1.0,
-        slippage_bps=20.0,
-        fee_bps=10.0,
-        latency_bps=5.0,
-        n_paths=params.simulation_count,
-        seed="tier2-frontier",
-        liability=params.liability,
-        strategy="external_hedge",
-        objective="max_ev",
-        liquidity=LiquidityModel(
-            available_liquidity=params.liquidity,
-            participation_rate=1.0,
-            impact_factor=0.0,
-            depth_exponent=1.0,
-        ),
-        cvar_alpha=0.95,
-    )
-
-
-@app.post("/api/tier2/frontier")
-def tier2_frontier(params: Tier2ScenarioIn):
-    return {
-        "title": "Figure 4 — Hedging Efficiency Frontier",
-        "frontiers": build_efficiency_frontier(_tier2_base_input(params)),
-    }
-
-
-@app.post("/api/tier2/feasibility")
-def tier2_feasibility(params: Tier2ScenarioIn):
-    return {
-        "title": "Figure 5 — Sportsbook Hedging Feasibility Map",
-        "current": {
-            "liability": params.liability,
-            "liquidity": params.liquidity,
-        },
-        **build_feasibility_map(params.target_hedge_ratio),
     }
 
 
@@ -978,7 +908,8 @@ def interactive_risk_transfer(inp: InteractiveCurveInV2):
     if len(inp.strategy_modes) * len(inp.liabilities) > 50:
         raise HTTPException(400, "Too many combinations (max 50).")
 
-    n_paths = min(inp.base_input.n_paths, 500)
+    requested_n_paths = inp.base_input.n_paths
+    n_paths = min(requested_n_paths, 500)
     grid = np.arange(0.0, 1.01, 0.05)
 
     def _collapsed(m) -> bool:
@@ -1026,10 +957,11 @@ def interactive_risk_transfer(inp: InteractiveCurveInV2):
 
     return {
         "scenario": {
-            "seed":             inp.base_input.seed,
-            "n_paths":          n_paths,
-            "fill_probability": inp.base_input.fill_probability,
-            "timestamp_utc":    datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "seed":              inp.base_input.seed,
+            "requested_n_paths": requested_n_paths,
+            "n_paths":           n_paths,
+            "fill_probability":  inp.base_input.fill_probability,
+            "timestamp_utc":     datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         },
         "objective": inp.objective,
         "series":    series,
@@ -1309,6 +1241,64 @@ def generate_report_now():
     content = generate_weekly_report(runs, count, week)
     path = save_report(content, week)
     return {"week": week, "path": path, "bytes": len(content)}
+
+
+# ---------------------------------------------------------------------------
+# API — Tier 2: Efficiency Frontier (Figure 4)
+# ---------------------------------------------------------------------------
+
+class _Tier2In(BaseModel):
+    liability:          float = 100_000_000.0
+    liquidity:          float = 20_000_000.0
+    true_probability:   float = 0.55
+    market_price:       float = 0.52
+    target_hedge_ratio: float = 0.60
+    simulation_count:   int   = 10_000
+
+
+@app.post("/api/tier2/frontier")
+def tier2_frontier(inp: _Tier2In):
+    from core.frontier import build_efficiency_frontier
+    from core.types_v12 import LiquidityModel, SimulationInputV12
+
+    n_paths = min(inp.simulation_count, 500)
+    base = SimulationInputV12(
+        stake=inp.liability,
+        american_odds=_prob_to_american(inp.market_price),
+        true_win_prob=inp.true_probability,
+        hedge_fraction=inp.target_hedge_ratio,
+        fill_probability=1.0,
+        slippage_bps=20.0,
+        fee_bps=10.0,
+        latency_bps=5.0,
+        n_paths=n_paths,
+        seed="tier2",
+        liability=inp.liability,
+        strategy="external_hedge",
+        objective="max_ev",
+        liquidity=LiquidityModel(
+            available_liquidity=inp.liquidity,
+            participation_rate=1.0,
+            impact_factor=0.0,
+            depth_exponent=1.0,
+        ),
+        cvar_alpha=0.95,
+    )
+    return {
+        "title":     "Figure 4 — Hedging Efficiency Frontier",
+        "frontiers": build_efficiency_frontier(base),
+    }
+
+
+@app.post("/api/tier2/feasibility")
+def tier2_feasibility(inp: _Tier2In):
+    from core.feasibility import build_feasibility_map
+
+    result = build_feasibility_map(inp.target_hedge_ratio)
+    return {
+        "title": "Figure 5 — Sportsbook Hedging Feasibility Map",
+        **result,
+    }
 
 
 # ---------------------------------------------------------------------------
