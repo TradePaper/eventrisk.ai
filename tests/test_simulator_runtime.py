@@ -16,6 +16,8 @@ class TestSimulatorRuntimeRoute:
         assert "Scenario Controls" in text
         assert "Run Simulation" in text
         assert "Copy Share Link" in text
+        assert "EventRisk" in text
+        assert "Read the paper" in text
         assert "Sportsbook Loss Distribution" in text
         assert "Liquidity-Constrained Risk Transfer Curve" in text
         assert "Hedging Efficiency Frontier" in text

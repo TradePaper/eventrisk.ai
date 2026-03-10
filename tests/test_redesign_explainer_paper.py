@@ -19,6 +19,11 @@ FORBIDDEN_LEGACY = [
 
 
 class TestRedesignRoutes:
+    def test_root_redirects_to_explainer(self):
+        resp = client.get("/", follow_redirects=False)
+        assert resp.status_code in (302, 307)
+        assert resp.headers["location"] == "/explainer"
+
     def test_status_contract(self):
         resp = client.get("/status")
         assert resp.status_code == 200
@@ -33,6 +38,7 @@ class TestRedesignRoutes:
         assert "Explainer" in text
         assert "Paper Figures" in text
         assert "Stress Test" in text
+        assert "Read the paper" in text
         assert "data-preset=\"superbowl\"" in text
         assert "data-preset=\"election\"" in text
         assert "data-preset=\"weather\"" in text
@@ -53,7 +59,17 @@ class TestRedesignRoutes:
         assert "Figure 6 — Preset Stress-Test Snapshot" in text
 
     def test_redesigned_routes_hide_legacy_controls(self):
-        for route in ("/explainer", "/paper"):
+        for route in ("/explainer", "/paper", "/simulator"):
             text = client.get(route).text.lower()
             for forbidden in FORBIDDEN_LEGACY:
                 assert forbidden not in text
+
+    def test_shared_nav_asset_uses_redesign_destinations(self):
+        text = client.get("/static/nav.js").text
+        assert "EventRisk" in text
+        assert "Read the paper" in text
+        assert 'href="/explainer"' in text
+        assert 'href="/paper"' in text
+        assert 'href="/simulator"' in text
+        assert "Event Markets Intelligence" not in text
+        assert "Sportsbook Hedge Simulator" not in text

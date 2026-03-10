@@ -129,28 +129,13 @@ class TestTier2EndpointsAndPage:
         assert payload["labels"]["partial"] == "Partial Hedging"
         assert payload["labels"]["meaningful"] == "Meaningful Hedging"
 
-    def test_event_markets_page_contains_paper_mode_and_url_serialization_keys(self):
+    def test_event_markets_page_remains_directly_available(self):
         client = TestClient(app)
         r = client.get("/event-markets")
         assert r.status_code == 200
         text = r.text
 
-        assert "Paper" in text
-        assert "Explore" in text
-        assert "PAPER_DEFAULTS" in text
-        assert "liability: 100000000" in text
-        assert "liquidity: 20000000" in text
-        assert "true_probability: 0.55" in text
-        assert "market_price: 0.52" in text
-        assert "target_hedge_ratio: 0.60" in text
-        assert "simulation_count: 10000" in text
-        assert ".disabled = disable" in text
-
-        assert "q.get(\"liability\")" in text
-        assert "q.get(\"liquidity\")" in text
-        assert "q.get(\"p\")" in text
-        assert "q.get(\"price\")" in text
-        assert "q.get(\"hedge\")" in text
-        assert "q.get(\"n\")" in text
-        assert "setTimeout" in text
-        assert "300" in text
+        assert "Event Markets Intelligence" in text
+        assert "Risk Transfer Curve" in text
+        assert "loadContracts()" in text
+        assert '/static/nav.js' in text

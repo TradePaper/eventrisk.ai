@@ -57,15 +57,12 @@
   var nav = document.createElement('nav');
   nav.className = 'site-nav';
   nav.innerHTML = `
-    <span class="site-nav-logo">ProbEdge</span>
+    <a class="site-nav-logo" href="/explainer">EventRisk</a>
     <div class="site-nav-links">
-      <a class="site-nav-link" href="/event-markets">Event Markets Intelligence</a>
-      <a class="site-nav-link" href="/event-markets#curve" style="font-size:10px;opacity:.65;padding-left:4px;padding-right:4px;">↳ Curve</a>
-      <a class="site-nav-link" href="/hedging-simulator">Sportsbook Hedge Simulator</a>
-      <a class="site-nav-link" href="/probability-gap">Probability Gap Dashboard</a>
-      <a class="site-nav-link" href="/contract-library">Event Contract Library</a>
-      <a class="site-nav-link" href="/backtest">Historical Backtesting</a>
-      <a class="site-nav-link" href="/reports">Weekly Reports</a>
+      <a class="site-nav-link" href="/explainer">Explainer</a>
+      <a class="site-nav-link" href="/paper">Paper Figures</a>
+      <a class="site-nav-link" href="/simulator">Stress Test</a>
+      <a class="site-nav-link" href="https://eventrisk.ai/paper" target="_blank" rel="noopener noreferrer">Read the paper</a>
     </div>
   `;
 
