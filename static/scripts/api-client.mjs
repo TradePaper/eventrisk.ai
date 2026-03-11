@@ -6,6 +6,8 @@
  * }} RuntimeConfig
  */
 
+const DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app";
+
 /**
  * @typedef {{
  *   baseUrl?: string;
@@ -44,7 +46,7 @@ export function resolveApiBaseUrl(options = {}) {
   const runtimeConfig =
     options.runtimeConfig ??
     (typeof window !== "undefined"
-      ? window.__EVENTRISK_RUNTIME_CONFIG__ ?? window.__RUNTIME_CONFIG__ ?? {}
+      ? window.__EVENTRISK_CONFIG ?? window.__EVENTRISK_RUNTIME_CONFIG__ ?? window.__RUNTIME_CONFIG__ ?? {}
       : {});
 
   const runtimeBase = runtimeConfig.apiBaseUrl?.trim();
@@ -52,15 +54,7 @@ export function resolveApiBaseUrl(options = {}) {
     return runtimeBase.replace(/\/$/, "");
   }
 
-  if (options.locationOrigin) {
-    return options.locationOrigin.replace(/\/$/, "");
-  }
-
-  if (typeof window !== "undefined" && window.location?.origin) {
-    return window.location.origin.replace(/\/$/, "");
-  }
-
-  return options.fallbackBaseUrl?.trim()?.replace(/\/$/, "") ?? "";
+  return normalizeBaseUrl(options.fallbackBaseUrl) || DEFAULT_API_BASE_URL;
 }
 
 /**
@@ -69,11 +63,15 @@ export function resolveApiBaseUrl(options = {}) {
 export function createApiClient(options = {}) {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? 15_000;
+  const fallbackBaseUrl = normalizeBaseUrl(options.fallbackBaseUrl) || DEFAULT_API_BASE_URL;
+  const locationOrigin =
+    normalizeBaseUrl(options.locationOrigin) ||
+    (typeof window !== "undefined" ? normalizeBaseUrl(window.location?.origin) : "");
   const baseUrl = resolveApiBaseUrl({
     baseUrl: options.baseUrl,
-    fallbackBaseUrl: options.fallbackBaseUrl,
+    fallbackBaseUrl,
     runtimeConfig: options.runtimeConfig,
-    locationOrigin: options.locationOrigin,
+    locationOrigin,
   });
 
   if (typeof fetchImpl !== "function") {
@@ -85,32 +83,24 @@ export function createApiClient(options = {}) {
    * @param {RequestInit} [init]
    */
   async function fetchJson(path, init = {}) {
+    const shouldRetryAgainstFallback = baseUrl === locationOrigin && fallbackBaseUrl && fallbackBaseUrl !== baseUrl;
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(new Error("timeout")), timeoutMs);
 
     try {
-      const response = await fetchImpl(`${baseUrl}${path}`, {
-        ...init,
-        signal: controller.signal,
-        headers: {
-          Accept: "application/json",
-          ...(init.body ? { "Content-Type": "application/json" } : {}),
-          ...(init.headers ?? {}),
-        },
-      });
-
-      const text = await response.text();
-      const payload = text ? tryParseJson(text) : null;
-
-      if (!response.ok) {
-        const detail =
-          payload && typeof payload === "object" && "detail" in payload && typeof payload.detail === "string"
-            ? payload.detail
-            : `HTTP ${response.status}`;
-        throw new ApiError(detail, "http", { status: response.status });
+      try {
+        return await fetchJsonFromBase(baseUrl, path, init, fetchImpl, controller.signal);
+      } catch (error) {
+        if (
+          shouldRetryAgainstFallback &&
+          error instanceof ApiError &&
+          error.kind !== "parse"
+        ) {
+          return await fetchJsonFromBase(fallbackBaseUrl, path, init, fetchImpl, controller.signal);
+        }
+        throw error;
       }
-
-      return payload;
     } catch (error) {
       if (error instanceof ApiError) {
         throw error;
@@ -222,6 +212,45 @@ export function createApiClient(options = {}) {
       });
     },
   };
+}
+
+/**
+ * @param {string | undefined | null} value
+ */
+function normalizeBaseUrl(value) {
+  return value?.trim()?.replace(/\/$/, "") ?? "";
+}
+
+/**
+ * @param {string} baseUrl
+ * @param {string} path
+ * @param {RequestInit} init
+ * @param {typeof fetch} fetchImpl
+ * @param {AbortSignal} signal
+ */
+async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, signal) {
+  const response = await fetchImpl(`${baseUrl}${path}`, {
+    ...init,
+    signal,
+    headers: {
+      Accept: "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.headers ?? {}),
+    },
+  });
+
+  const text = await response.text();
+  const payload = text ? tryParseJson(text) : null;
+
+  if (!response.ok) {
+    const detail =
+      payload && typeof payload === "object" && "detail" in payload && typeof payload.detail === "string"
+        ? payload.detail
+        : `HTTP ${response.status}`;
+    throw new ApiError(detail, "http", { status: response.status });
+  }
+
+  return payload;
 }
 
 /**

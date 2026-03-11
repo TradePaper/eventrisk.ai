@@ -118,12 +118,16 @@ class TestSimulatorRuntimeRoute:
         assert "Simulation unavailable. Retry?" in text
         assert "/runtime-config.js" in text
         assert "/static/scripts/simulator-app.mjs" in text
+        assert text.index("/runtime-config.js") < text.index("/static/scripts/simulator-app.mjs")
         assert "/simulator?v=1&amp;lb={liability}&amp;liq={liquidity}&amp;hf={hedgeFraction}" in text
 
-    def test_runtime_config_defaults_to_same_origin_when_env_missing(self):
+    def test_runtime_config_emits_blank_api_base_when_env_missing(self):
         resp = client.get("/runtime-config.js")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("application/javascript")
+        assert "window.__EVENTRISK_CONFIG" in resp.text
+        assert "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
+        assert "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert 'apiBaseUrl": ""' in resp.text
         assert 'paperUrl": "https://eventrisk.ai/paper"' in resp.text
 
@@ -172,7 +176,14 @@ class TestSimulatorRuntimeRoute:
 
     def test_api_client_accepts_runtime_config_key_emitted_by_server(self):
         text = client.get("/static/scripts/api-client.mjs").text
+        assert "window.__EVENTRISK_CONFIG" in text
         assert "window.__RUNTIME_CONFIG__" in text
+
+    def test_api_client_defaults_to_replit_base_and_retries_same_origin_failure(self):
+        text = client.get("/static/scripts/api-client.mjs").text
+        assert 'const DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app";' in text
+        assert "shouldRetryAgainstFallback = baseUrl === locationOrigin" in text
+        assert "return await fetchJsonFromBase(fallbackBaseUrl, path, init, fetchImpl, controller.signal);" in text
 
     def test_simulator_run_contract_endpoints_return_chart_data(self):
         distribution = client.post(

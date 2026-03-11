@@ -286,7 +286,11 @@ def reports_page():
 def runtime_config():
     api_base = os.environ.get("API_BASE_URL", "")
     paper_url = html.escape(_get_paper_url(), quote=True)
-    js = f'window.__RUNTIME_CONFIG__ = {{"apiBaseUrl": "{api_base}", "paperUrl": "{paper_url}"}};\n'
+    js = (
+        f'window.__EVENTRISK_CONFIG = {{"apiBaseUrl": "{api_base}", "paperUrl": "{paper_url}"}};\n'
+        "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG;\n"
+        "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG;\n"
+    )
     return Response(content=js, media_type="application/javascript",
                     headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
 
