@@ -71,6 +71,17 @@ class TestRedesignRoutes:
         assert "Figure 5 — Hedging Feasibility Map" in text
         assert "Figure 5 — Sportsbook Hedging Feasibility Map" not in text
         assert "Figure 6 — Preset Stress-Test Snapshot" in text
+        assert text.count("window.Plotly.react(") == 6
+        assert 'id="paperFigure${index + 1}"' in text
+        assert 'const PRESETS = {' in text
+
+    def test_paper_route_includes_plotly_and_figure_mounts(self):
+        resp = client.get("/paper")
+        assert resp.status_code == 200
+        text = resp.text
+        assert "https://cdn.plot.ly/plotly-2.35.2.min.js" in text
+        assert 'id="figureList"' in text
+        assert "/static/scripts/paper.js" in text
 
     def test_redesigned_routes_hide_legacy_controls(self):
         for route in ("/explainer", "/paper", "/simulator"):
