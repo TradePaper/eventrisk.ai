@@ -113,3 +113,14 @@ class TestRedesignRoutes:
             assert "Read the paper" in text
             assert 'href=""' not in text
             assert "aria-disabled=\"true\"" in text
+
+    def test_explainer_controls_trigger_live_refresh_paths(self):
+        text = client.get("/static/scripts/explainer.js").text
+        assert 'await hydrateStrategyViews(strategy, { forceRefresh: true });' in text
+        assert "if (!updateCurveCardFromCache()) {" in text
+        assert 'void hydrateStrategyViews(state.strategy, { forceRefresh: true });' in text
+        assert "const step2Key = getStep2CacheKey(strategy);" in text
+        assert "const step3Key = getStep3CacheKey(strategy);" in text
+        assert "!forceRefresh && hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy)" in text
+        assert "!forceRefresh && hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy)" in text
+        assert 'seed: "superbowl_v1"' in text
