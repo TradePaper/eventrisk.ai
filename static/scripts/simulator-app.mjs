@@ -146,7 +146,7 @@ async function copyShareLink() {
 async function runSimulation() {
   refs.runButton.disabled = true;
   refs.chartStatus.textContent = "Running live simulation";
-  setPanelsLoading(true);
+  setPanelsState("loading");
 
   try {
     const [distribution, curve, frontier] = await Promise.all([
@@ -159,11 +159,10 @@ async function runSimulation() {
     renderCurve(curve);
     renderFrontier(frontier);
     refs.chartStatus.textContent = "Live API results";
-    setPanelsLoading(false);
+    setPanelsState("ready");
   } catch (error) {
     console.error(error);
-    setPanelsLoading(false);
-    setPanelsError(normalizeError(error));
+    setPanelsState("error", normalizeError(error));
     refs.chartStatus.textContent = "Simulation unavailable";
   } finally {
     refs.runButton.disabled = false;
@@ -172,27 +171,17 @@ async function runSimulation() {
 }
 
 /**
- * @param {boolean} loading
+ * @param {"loading" | "ready" | "error"} status
+ * @param {string} [message]
  */
-function setPanelsLoading(loading) {
+function setPanelsState(status, message = "") {
   Object.values(refs.panels).forEach((panel) => {
-    panel.skeleton.hidden = !loading;
-    panel.error.hidden = true;
-    panel.plot.hidden = loading;
-    panel.shell.dataset.loading = loading ? "true" : "false";
-  });
-}
-
-/**
- * @param {string} message
- */
-function setPanelsError(message) {
-  Object.values(refs.panels).forEach((panel) => {
-    panel.skeleton.hidden = true;
-    panel.plot.hidden = true;
-    panel.error.hidden = false;
+    panel.skeleton.hidden = status !== "loading";
+    panel.error.hidden = status !== "error";
+    panel.plot.hidden = status !== "ready";
+    panel.shell.dataset.loading = status === "loading" ? "true" : "false";
     const detail = panel.error.querySelector(".chart-error-detail");
-    if (detail) {
+    if (detail && status === "error") {
       detail.textContent = message;
     }
   });

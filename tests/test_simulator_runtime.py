@@ -185,6 +185,16 @@ class TestSimulatorRuntimeRoute:
         assert "shouldRetryAgainstFallback = baseUrl === locationOrigin" in text
         assert "return await fetchJsonFromBase(fallbackBaseUrl, path, init, fetchImpl, controller.signal);" in text
 
+    def test_simulator_ui_respects_hidden_state_for_panels(self):
+        css = client.get("/static/styles/simulator.css").text
+        script = client.get("/static/scripts/simulator-app.mjs").text
+        assert "[hidden]" in css
+        assert "display: none !important;" in css
+        assert 'function setPanelsState(status, message = "")' in script
+        assert 'panel.skeleton.hidden = status !== "loading";' in script
+        assert 'panel.error.hidden = status !== "error";' in script
+        assert 'panel.plot.hidden = status !== "ready";' in script
+
     def test_simulator_run_contract_endpoints_return_chart_data(self):
         distribution = client.post(
             "/api/risk-transfer/distribution",
