@@ -6,6 +6,7 @@ import threading
 import html
 from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -54,6 +55,20 @@ app = FastAPI(title="ProbEdge Research")
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 DEFAULT_PAPER_URL = "https://eventrisk.ai/paper"
 PAPER_URL_ENV_KEY = "PAPER_URL"
+_ALLOWED_CORS_ORIGINS = [
+    "https://eventrisk.ai",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5000",
+    "http://127.0.0.1:5000",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_ALLOWED_CORS_ORIGINS,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 def _get_paper_url() -> str:

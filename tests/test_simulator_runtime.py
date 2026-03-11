@@ -7,6 +7,82 @@ client = TestClient(app)
 
 
 class TestSimulatorRuntimeRoute:
+    def test_distribution_preflight_allows_eventrisk_origin(self):
+        resp = client.options(
+            "/api/risk-transfer/distribution",
+            headers={
+                "Origin": "https://eventrisk.ai",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "https://eventrisk.ai"
+        assert "POST" in resp.headers["access-control-allow-methods"]
+
+    def test_interactive_preflight_allows_eventrisk_origin(self):
+        resp = client.options(
+            "/api/risk-transfer/interactive",
+            headers={
+                "Origin": "https://eventrisk.ai",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "https://eventrisk.ai"
+        assert "POST" in resp.headers["access-control-allow-methods"]
+
+    def test_distribution_endpoint_allows_localhost_dev_origin(self):
+        resp = client.post(
+            "/api/risk-transfer/distribution",
+            headers={"Origin": "http://localhost:3000"},
+            json={
+                "strategy": "external_hedge",
+                "liability": 2000.0,
+                "hedge_fraction": 0.0,
+                "base_input": {
+                    "stake": 100,
+                    "american_odds": -110,
+                    "true_win_prob": 0.54,
+                    "fill_probability": 0.85,
+                    "n_paths": 500,
+                    "seed": "superbowl_v1",
+                    "slippage_bps": 8,
+                    "fee_bps": 2,
+                    "latency_bps": 3,
+                    "liquidity": {
+                        "available_liquidity": 1_000_000,
+                        "participation_rate": 0.2,
+                        "impact_factor": 0.6,
+                        "depth_exponent": 1.0,
+                    },
+                },
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+    def test_interactive_endpoint_allows_local_dev_origin(self):
+        resp = client.post(
+            "/api/risk-transfer/interactive",
+            headers={"Origin": "http://127.0.0.1:3000"},
+            json={
+                "liability_min": 500.0,
+                "liability_max": 2000.0,
+                "n_points": 3,
+                "true_probability": 0.55,
+                "prediction_market_price": 0.52,
+                "fill_probability": 1.0,
+                "objective": "min_cvar",
+                "strategy": "external_hedge",
+                "seed": "cors-interactive-test",
+                "n_paths": 200,
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
+
     def test_simulator_page_contains_live_controls_and_chart_shells(self):
         resp = client.get("/simulator")
         assert resp.status_code == 200
