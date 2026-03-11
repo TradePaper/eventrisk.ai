@@ -71,9 +71,18 @@ class TestRedesignRoutes:
         assert "Figure 5 — Hedging Feasibility Map" in text
         assert "Figure 5 — Sportsbook Hedging Feasibility Map" not in text
         assert "Figure 6 — Preset Stress-Test Snapshot" in text
-        assert text.count("window.Plotly.react(") == 6
-        assert 'id="paperFigure${index + 1}"' in text
-        assert 'const PRESETS = {' in text
+
+    def test_paper_route_uses_chart_rendering_script_not_text_only_cards(self):
+        html = client.get("/paper").text
+        js = client.get("/static/scripts/paper.js").text
+        assert "/runtime-config.js" in html
+        assert "https://cdn.plot.ly/plotly-2.35.2.min.js" in html
+        assert "window.Plotly.react(" in js
+        assert 'id="paperFigure${index + 1}"' in js
+        assert "renderFigure5" in js
+        assert "figure-notes" not in js
+        assert js.count("window.Plotly.react(") == 6
+        assert 'const PRESETS = {' in js
 
     def test_paper_route_includes_plotly_and_figure_mounts(self):
         resp = client.get("/paper")
@@ -117,13 +126,16 @@ class TestRedesignRoutes:
             assert len(secure_links) == len(links)
             assert 'href=""' not in text
 
-    def test_redesign_routes_disable_paper_link_when_missing(self, monkeypatch):
+    def test_redesign_routes_fall_back_to_default_external_paper_link_when_missing(self, monkeypatch):
         monkeypatch.delenv("PAPER_URL", raising=False)
+        expected = "https://eventrisk.ai/paper"
         for route in ("/explainer", "/paper", "/simulator"):
             text = client.get(route).text
             assert "Read the paper" in text
             assert 'href=""' not in text
-            assert "aria-disabled=\"true\"" in text
+            links = PAPER_LINK_PATTERN.findall(text)
+            assert links
+            assert all(href == expected for href, _ in links)
 
     def test_explainer_controls_trigger_live_refresh_paths(self):
         text = client.get("/static/scripts/explainer.js").text

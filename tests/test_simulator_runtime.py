@@ -129,7 +129,7 @@ class TestSimulatorRuntimeRoute:
         assert "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert 'apiBaseUrl": "https://market-hedge-simulator.replit.app"' in resp.text
-        assert 'paperUrl": ""' in resp.text
+        assert 'paperUrl": "https://eventrisk.ai/paper"' in resp.text
 
     def test_runtime_config_ignores_blank_api_base_env_and_keeps_replit_host(self, monkeypatch):
         monkeypatch.setenv("API_BASE_URL", "   ")
@@ -143,13 +143,11 @@ class TestSimulatorRuntimeRoute:
         assert resp.status_code == 200
         assert 'paperUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1234567"' in resp.text
 
-    def test_paper_link_hides_when_paper_url_empty(self, monkeypatch):
+    def test_blank_paper_url_env_falls_back_to_default_external_link(self, monkeypatch):
         monkeypatch.setenv("PAPER_URL", "   ")
         text = client.get("/simulator").text
         assert "Read the paper" in text
-        assert 'href=""' not in text
-        assert "<span" in text
-        assert "aria-disabled=\"true\"" in text
+        assert 'href="https://eventrisk.ai/paper"' in text
 
     def test_simulator_assets_are_served(self):
         for route, content_type in (
