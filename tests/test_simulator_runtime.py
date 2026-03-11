@@ -121,15 +121,21 @@ class TestSimulatorRuntimeRoute:
         assert text.index("/runtime-config.js") < text.index("/static/scripts/simulator-app.mjs")
         assert "/simulator?v=1&amp;lb={liability}&amp;liq={liquidity}&amp;hf={hedgeFraction}" in text
 
-    def test_runtime_config_emits_blank_api_base_when_env_missing(self):
+    def test_runtime_config_defaults_api_base_to_replit_host_when_env_missing(self):
         resp = client.get("/runtime-config.js")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("application/javascript")
         assert "window.__EVENTRISK_CONFIG" in resp.text
         assert "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
-        assert 'apiBaseUrl": ""' in resp.text
+        assert 'apiBaseUrl": "https://market-hedge-simulator.replit.app"' in resp.text
         assert 'paperUrl": ""' in resp.text
+
+    def test_runtime_config_ignores_blank_api_base_env_and_keeps_replit_host(self, monkeypatch):
+        monkeypatch.setenv("API_BASE_URL", "   ")
+        resp = client.get("/runtime-config.js")
+        assert resp.status_code == 200
+        assert 'apiBaseUrl": "https://market-hedge-simulator.replit.app"' in resp.text
 
     def test_runtime_config_emits_configured_external_paper_url(self, monkeypatch):
         monkeypatch.setenv("PAPER_URL", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1234567")

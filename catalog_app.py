@@ -54,6 +54,7 @@ DB_PATH = "tmp/contracts.db"
 app = FastAPI(title="ProbEdge Research")
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 DEFAULT_PAPER_URL = ""
+DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app"
 PAPER_URL_ENV_KEY = "PAPER_URL"
 _ALLOWED_CORS_ORIGINS = [
     "https://eventrisk.ai",
@@ -284,7 +285,7 @@ def reports_page():
 
 @app.get("/runtime-config.js")
 def runtime_config():
-    api_base = os.environ.get("API_BASE_URL", "")
+    api_base = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL).strip() or DEFAULT_API_BASE_URL
     paper_url = html.escape(_get_paper_url(), quote=True)
     js = (
         f'window.__EVENTRISK_CONFIG = {{"apiBaseUrl": "{api_base}", "paperUrl": "{paper_url}"}};\n'

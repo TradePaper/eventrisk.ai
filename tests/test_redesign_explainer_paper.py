@@ -127,6 +127,8 @@ class TestRedesignRoutes:
 
     def test_explainer_controls_trigger_live_refresh_paths(self):
         text = client.get("/static/scripts/explainer.js").text
+        assert 'const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debugApi") === "1";' in text
+        assert 'console.info("[explainer] resolved API base:", client.baseUrl);' in text
         assert 'await hydrateStrategyViews(strategy, { forceRefresh: true });' in text
         assert "if (!updateCurveCardFromCache()) {" in text
         assert 'void hydrateStrategyViews(state.strategy, { forceRefresh: true });' in text
