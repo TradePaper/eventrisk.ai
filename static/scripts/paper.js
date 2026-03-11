@@ -13,10 +13,10 @@ const PRESETS = {
   weather: "/lib/presets/weather.json"
 };
 
-const presetButtons = Array.from(document.querySelectorAll(".preset-btn"));
-const listEl = document.getElementById("figureList");
-const stickyTitle = document.getElementById("currentFigure");
-const stickyCaption = document.getElementById("currentCaption");
+let presetButtons = [];
+let listEl = null;
+let stickyTitle = null;
+let stickyCaption = null;
 
 let activePreset = "superbowl";
 let currentObserver = null;
@@ -98,11 +98,29 @@ async function loadPreset(presetKey) {
   stickyTitle.textContent = FIGURE_TITLES[0];
   stickyCaption.textContent = `Preset: ${data.name} · Static figure set`;
   buildCards(data);
-  renderFigures(data);
+  requestAnimationFrame(() => renderFigures(data));
 }
 
-presetButtons.forEach((btn) => btn.addEventListener("click", () => loadPreset(btn.dataset.preset)));
-loadPreset(activePreset);
+function bootPaper() {
+  presetButtons = Array.from(document.querySelectorAll(".preset-btn"));
+  listEl = document.getElementById("figureList");
+  stickyTitle = document.getElementById("currentFigure");
+  stickyCaption = document.getElementById("currentCaption");
+
+  if (!listEl || !stickyTitle || !stickyCaption || typeof window.Plotly?.react !== "function") {
+    console.error("[paper] chart runtime unavailable");
+    return;
+  }
+
+  presetButtons.forEach((btn) => btn.addEventListener("click", () => loadPreset(btn.dataset.preset)));
+  void loadPreset(activePreset);
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootPaper, { once: true });
+} else {
+  bootPaper();
+}
 
 function renderFigure1(data) {
   const plotEl = document.getElementById("paperFigure1");

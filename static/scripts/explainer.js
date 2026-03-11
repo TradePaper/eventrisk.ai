@@ -552,16 +552,21 @@ function setStepState(step, status) {
 function goToStep(index) {
   const nextIndex = Math.max(0, Math.min(index, refs.steps.length - 1));
   state.activeStep = nextIndex;
-  refs.steps[nextIndex].scrollIntoView({ behavior: "smooth", block: "start" });
+  refs.deck.scrollTo({ top: refs.steps[nextIndex].offsetTop, behavior: "smooth" });
   updateControlUi();
 }
 
 function syncStepFromScroll() {
-  const top = refs.deck.scrollTop;
+  const deckRect = refs.deck.getBoundingClientRect();
+  const deckMidpoint = deckRect.top + deckRect.height / 2;
   let candidate = 0;
+  let bestDistance = Number.POSITIVE_INFINITY;
   refs.steps.forEach((step, index) => {
-    if (top >= step.offsetTop - 120) {
+    const rect = step.getBoundingClientRect();
+    const midpointDistance = Math.abs(rect.top + rect.height / 2 - deckMidpoint);
+    if (midpointDistance < bestDistance) {
       candidate = index;
+      bestDistance = midpointDistance;
     }
   });
 
