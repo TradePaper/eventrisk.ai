@@ -62,9 +62,9 @@
       .replace(/>/g, '&gt;');
   }
 
-  var runtimeConfig = window.__RUNTIME_CONFIG__ || window.__EVENTRISK_RUNTIME_CONFIG__ || {};
+  var runtimeConfig = window.__EVENTRISK_CONFIG || window.__EVENTRISK_RUNTIME_CONFIG__ || window.__RUNTIME_CONFIG__ || {};
   var configuredPaperUrl = typeof runtimeConfig.paperUrl === 'string' ? runtimeConfig.paperUrl.trim() : '';
-  var paperUrl = configuredPaperUrl || 'https://eventrisk.ai/paper';
+  var paperUrl = configuredPaperUrl;
   var paperLinkMarkup = paperUrl
     ? '<a class="site-nav-link" href="' + escapeAttr(paperUrl) + '" target="_blank" rel="noopener noreferrer">Read the paper</a>'
     : '<span class="site-nav-link" aria-disabled="true">Read the paper</span>';

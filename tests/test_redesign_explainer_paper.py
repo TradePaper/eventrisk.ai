@@ -87,14 +87,16 @@ class TestRedesignRoutes:
         assert 'href="/explainer"' in text
         assert 'href="/paper"' in text
         assert 'href="/simulator"' in text
+        assert "window.__EVENTRISK_CONFIG" in text
         assert "window.__RUNTIME_CONFIG__" in text
         assert 'target="_blank"' in text
         assert 'rel="noopener noreferrer"' in text
         assert "Event Markets Intelligence" not in text
         assert "Sportsbook Hedge Simulator" not in text
 
-    def test_redesign_routes_use_same_paper_link_source(self):
-        expected = "https://eventrisk.ai/paper"
+    def test_redesign_routes_use_same_configured_external_paper_link(self, monkeypatch):
+        expected = "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1234567"
+        monkeypatch.setenv("PAPER_URL", expected)
         for route in ("/explainer", "/paper", "/simulator"):
             text = client.get(route).text
             links = PAPER_LINK_PATTERN.findall(text)
@@ -103,3 +105,11 @@ class TestRedesignRoutes:
             secure_links = SECURE_LINK_PATTERN.findall(text)
             assert len(secure_links) == len(links)
             assert 'href=""' not in text
+
+    def test_redesign_routes_disable_paper_link_when_missing(self, monkeypatch):
+        monkeypatch.delenv("PAPER_URL", raising=False)
+        for route in ("/explainer", "/paper", "/simulator"):
+            text = client.get(route).text
+            assert "Read the paper" in text
+            assert 'href=""' not in text
+            assert "aria-disabled=\"true\"" in text

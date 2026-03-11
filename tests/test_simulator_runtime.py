@@ -129,7 +129,13 @@ class TestSimulatorRuntimeRoute:
         assert "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert 'apiBaseUrl": ""' in resp.text
-        assert 'paperUrl": "https://eventrisk.ai/paper"' in resp.text
+        assert 'paperUrl": ""' in resp.text
+
+    def test_runtime_config_emits_configured_external_paper_url(self, monkeypatch):
+        monkeypatch.setenv("PAPER_URL", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1234567")
+        resp = client.get("/runtime-config.js")
+        assert resp.status_code == 200
+        assert 'paperUrl": "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1234567"' in resp.text
 
     def test_paper_link_hides_when_paper_url_empty(self, monkeypatch):
         monkeypatch.setenv("PAPER_URL", "   ")
