@@ -6,11 +6,17 @@
     <title>EventRisk.ai Explainer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Serif+Display:opsz@40&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:opsz@40&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/static/styles/eventrisk.css" />
+    <script src="/runtime-config.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <script type="module" src="/static/scripts/explainer.js"></script>
   </head>
   <body>
-    <div class="app-shell">
+    <div class="explainer-shell">
       <header class="top-nav">
         <a href="/explainer" class="wordmark">EventRisk</a>
         <nav class="nav-group">
@@ -22,58 +28,195 @@
       </header>
 
       <main class="page-main">
-        <div class="preset-bar" aria-label="Preset selector">
-          <button class="preset-btn active" data-preset="superbowl">Super Bowl</button>
-          <button class="preset-btn" data-preset="election">Election</button>
-          <button class="preset-btn" data-preset="weather">Weather Hedge</button>
-          <span id="metaLine" aria-live="polite"></span>
-        </div>
+        <section class="hero-band">
+          <div class="hero-copy">
+            <p class="eyebrow">Event contracts under liquidity constraints</p>
+            <h1>Three figures for why hedge capacity depends on market depth, not marketing copy.</h1>
+            <p class="hero-lede">
+              This explainer uses the live Monte Carlo engine with the deterministic
+              <code>superbowl_v1</code> seed to show how concentrated sportsbook downside changes as external
+              liquidity becomes available.
+            </p>
+          </div>
+
+          <aside class="hero-aside">
+            <p class="aside-label">Scenario</p>
+            <p class="aside-value">Canonical Super Bowl preset</p>
+            <p class="aside-meta" id="seedNote">Seed <code>superbowl_v1</code> · 500 paths · Liability $2,000</p>
+          </aside>
+        </section>
+
+        <section class="controls-bar" aria-label="Explainer controls">
+          <div class="step-indicator" aria-label="Explainer progress">
+            <button class="step-dot active" type="button" data-step-target="0" aria-label="Go to Step 1"></button>
+            <button class="step-dot" type="button" data-step-target="1" aria-label="Go to Step 2"></button>
+            <button class="step-dot" type="button" data-step-target="2" aria-label="Go to Step 3"></button>
+          </div>
+
+          <div class="persistent-controls">
+            <div class="segmented-control" aria-label="Strategy toggle" id="strategyToggle">
+              <button type="button" class="segment active" data-strategy="external_hedge">External Hedge</button>
+              <button type="button" class="segment" data-strategy="internal_reprice">Internal Reprice</button>
+              <button type="button" class="segment" data-strategy="hybrid">Hybrid</button>
+            </div>
+
+            <label class="metric-picker" for="curveMetricSelect">
+              <span>Step 3 metric</span>
+              <select id="curveMetricSelect">
+                <option value="cvar">CVaR-95</option>
+                <option value="max_loss">Max Loss</option>
+                <option value="hedge_ratio">Optimal Hedge Ratio</option>
+              </select>
+            </label>
+          </div>
+        </section>
 
         <section class="snap-deck" id="snapDeck">
-          <article class="snap-step" id="step1">
-            <h1 class="step-title">Step 1: Unhedged Distribution</h1>
-            <p class="step-subtitle">Start with the baseline risk profile before any transfer to an external market.</p>
-            <div class="panel">
-              <div id="step1Chart" class="chart"></div>
-              <div class="metrics">
-                <div class="metric"><p class="metric-label">Expected Value</p><p class="metric-value" id="s1M1"></p></div>
-                <div class="metric"><p class="metric-label">CVaR(95)</p><p class="metric-value" id="s1M2"></p></div>
-                <div class="metric"><p class="metric-label">Max Loss</p><p class="metric-value" id="s1M3"></p></div>
+          <article class="snap-step" data-step-index="0" id="step1">
+            <div class="step-copy">
+              <p class="step-kicker">Step 1</p>
+              <h2 class="step-title">Unhedged Baseline</h2>
+              <p class="step-subtitle">
+                Before any transfer, a skewed book carries concentrated downside. The live histogram below shows
+                the unhedged P&amp;L distribution for the canonical scenario.
+              </p>
+            </div>
+
+            <div class="figure-card">
+              <div class="chart-stage" data-panel="step1">
+                <div class="chart-skeleton" data-skeleton="step1" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="chart-error" data-error="step1" hidden>
+                  <strong>Simulation unavailable — try refreshing.</strong>
+                </div>
+                <div class="chart-plot" data-plot="step1" hidden></div>
               </div>
+
+              <div class="metrics-row">
+                <article class="metric-card">
+                  <p class="metric-label">Expected Value</p>
+                  <p class="metric-value" id="step1Ev">—</p>
+                </article>
+                <article class="metric-card">
+                  <p class="metric-label">Expected Worst-Case Loss</p>
+                  <p class="metric-value" id="step1Cvar">—</p>
+                </article>
+                <article class="metric-card">
+                  <p class="metric-label">Max Loss</p>
+                  <p class="metric-value" id="step1Max">—</p>
+                </article>
+              </div>
+
+              <aside class="annotation">
+                <p>
+                  Tail exposure: the concentrated downside a sportsbook cannot eliminate with line moves alone.
+                </p>
+              </aside>
             </div>
           </article>
 
-          <article class="snap-step" id="step2">
-            <h2 class="step-title">Step 2: Overlapping Hedged vs Unhedged</h2>
-            <p class="step-subtitle">Overlaying distributions makes tail-risk compression explicit and visually traceable.</p>
-            <div class="panel">
-              <div id="step2Chart" class="chart"></div>
-              <div class="metrics">
-                <div class="metric"><p class="metric-label">Unhedged EV</p><p class="metric-value" id="s2M1"></p></div>
-                <div class="metric"><p class="metric-label">Unhedged CVaR(95)</p><p class="metric-value" id="s2M2"></p></div>
-                <div class="metric"><p class="metric-label">Hedged CVaR(95)</p><p class="metric-value" id="s2M3"></p></div>
-                <div class="metric"><p class="metric-label">Tail Reduction</p><p class="metric-value" id="s2Tail"></p></div>
+          <article class="snap-step" data-step-index="1" id="step2">
+            <div class="step-copy">
+              <p class="step-kicker">Step 2</p>
+              <h2 class="step-title">Hedged vs. Unhedged Overlay</h2>
+              <p class="step-subtitle">
+                The default strategy is External Hedge. Switching strategy updates the live overlay and keeps the
+                focus on left-tail compression rather than EV maximization.
+              </p>
+            </div>
+
+            <div class="figure-card">
+              <div class="chart-stage" data-panel="step2">
+                <div class="chart-skeleton" data-skeleton="step2" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="chart-error" data-error="step2" hidden>
+                  <strong>Simulation unavailable — try refreshing.</strong>
+                </div>
+                <div class="chart-plot" data-plot="step2" hidden></div>
               </div>
+
+              <div class="metrics-row metrics-row-wide">
+                <article class="metric-card">
+                  <p class="metric-label">Unhedged CVaR-95</p>
+                  <p class="metric-value" id="step2UnhedgedCvar">—</p>
+                </article>
+                <article class="metric-card">
+                  <p class="metric-label">Hedged CVaR-95</p>
+                  <p class="metric-value" id="step2HedgedCvar">—</p>
+                </article>
+                <article class="metric-card">
+                  <p class="metric-label">Unhedged Max Loss</p>
+                  <p class="metric-value" id="step2UnhedgedMax">—</p>
+                </article>
+                <article class="metric-card">
+                  <p class="metric-label">Hedged Max Loss</p>
+                  <p class="metric-value" id="step2HedgedMax">—</p>
+                </article>
+                <article class="metric-card accent-card">
+                  <p class="metric-label">Tail Reduction</p>
+                  <p class="metric-value" id="step2TailReduction">—</p>
+                </article>
+              </div>
+
+              <aside class="annotation">
+                <p>
+                  Tail compression, not EV improvement, is the economic purpose at work. This left-tail shift is
+                  what matters for capital and regulatory analysis.
+                </p>
+              </aside>
             </div>
           </article>
 
-          <article class="snap-step" id="step3">
-            <h2 class="step-title">Step 3: Liquidity-Constrained Risk Transfer</h2>
-            <p class="step-subtitle">The curve below shows where feasible transfer exists and where liquidity limits dominate.</p>
-            <div class="panel">
+          <article class="snap-step" data-step-index="2" id="step3">
+            <div class="step-copy">
+              <p class="step-kicker">Step 3</p>
+              <h2 class="step-title">Liquidity-Constrained Risk Transfer Curve</h2>
+              <p class="step-subtitle">
+                Feasible hedge ratios change with liability size. The live curve shows where liquidity remains
+                meaningful, where it only partially helps, and where it stops carrying the transfer.
+              </p>
+            </div>
+
+            <div class="figure-card">
               <div class="zone-legend">
-                <span class="zone-tag green">Green: Meaningful</span>
-                <span class="zone-tag yellow">Yellow: Partial</span>
-                <span class="zone-tag red">Red: Constrained</span>
+                <span class="zone-tag zone-meaningful">Meaningful hedging</span>
+                <span class="zone-tag zone-partial">Partial hedging</span>
+                <span class="zone-tag zone-constrained">No effective hedging</span>
               </div>
-              <div id="step3Chart" class="chart"></div>
-              <div class="metrics">
-                <div class="metric"><p class="metric-label">Tail Risk (Unhedged)</p><p class="metric-value" id="s3M1"></p></div>
-                <div class="metric"><p class="metric-label">Tail Risk (Hedged)</p><p class="metric-value" id="s3M2"></p></div>
-                <div class="metric"><p class="metric-label">Utilization</p><p class="metric-value" id="s3M3"></p></div>
+
+              <div class="chart-stage" data-panel="step3">
+                <div class="chart-skeleton" data-skeleton="step3" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span>
+                </div>
+                <div class="chart-error" data-error="step3" hidden>
+                  <strong>Simulation unavailable — try refreshing.</strong>
+                </div>
+                <div class="chart-plot" data-plot="step3" hidden></div>
               </div>
+
+              <div class="metrics-row">
+                <article class="metric-card">
+                  <p class="metric-label">Selected Metric</p>
+                  <p class="metric-value" id="step3MetricValue">—</p>
+                </article>
+                <article class="metric-card">
+                  <p class="metric-label">Optimal Hedge Ratio</p>
+                  <p class="metric-value" id="step3HedgeRatio">—</p>
+                </article>
+                <article class="metric-card">
+                  <p class="metric-label">Liquidity Binding Points</p>
+                  <p class="metric-value" id="step3BindingCount">—</p>
+                </article>
+              </div>
+
+              <aside class="annotation">
+                <p>Liquidity, not contractual design, governs practical hedge capacity.</p>
+              </aside>
+
               <div class="cta-card">
-                <strong>Continue to interactive stress testing and the paper figures.</strong>
+                <strong>Continue to the live Stress Test or open the paper.</strong>
                 <div class="cta-actions">
                   <a class="cta-link" href="/simulator">Open Stress Test</a>
                   __PAPER_LINK_EXPLAINER_CTA__
@@ -83,15 +226,10 @@
           </article>
         </section>
 
-        <div class="controls-fixed" aria-label="Step controls">
+        <nav class="controls-fixed" aria-label="Step controls">
           <button class="nav-btn" id="btnBack" type="button">Back</button>
           <button class="nav-btn" id="btnNext" type="button">Next</button>
-        </div>
-        <div class="progress-dots" aria-label="Explainer progress">
-          <span class="dot active"></span>
-          <span class="dot"></span>
-          <span class="dot"></span>
-        </div>
+        </nav>
       </main>
 
       <footer class="page-footer">
@@ -99,6 +237,5 @@
         __PAPER_LINK_EXPLAINER_FOOTER__
       </footer>
     </div>
-    <script src="/static/scripts/explainer.js" defer></script>
   </body>
 </html>

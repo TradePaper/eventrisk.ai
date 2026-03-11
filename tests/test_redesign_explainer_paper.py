@@ -13,9 +13,7 @@ SECURE_LINK_PATTERN = re.compile(
 
 
 FORBIDDEN_LEGACY = [
-    "strategy",
     "objective",
-    "seed",
     "n_paths",
     "provider",
     "export",
@@ -45,12 +43,21 @@ class TestRedesignRoutes:
         assert "Paper Figures" in text
         assert "Stress Test" in text
         assert "Read the paper" in text
-        assert "data-preset=\"superbowl\"" in text
-        assert "data-preset=\"election\"" in text
-        assert "data-preset=\"weather\"" in text
+        assert "External Hedge" in text
+        assert "Internal Reprice" in text
+        assert "Hybrid" in text
+        assert "CVaR-95" in text
+        assert "Optimal Hedge Ratio" in text
+        assert "superbowl_v1" in text
         assert "id=\"btnBack\"" in text
         assert "id=\"btnNext\"" in text
         assert "id=\"snapDeck\"" in text
+        assert "/runtime-config.js" in text
+        assert "/static/scripts/explainer.js" in text
+        assert "Simulation unavailable" in text
+        assert "data-step-target=\"0\"" in text
+        assert "data-step-target=\"1\"" in text
+        assert "data-step-target=\"2\"" in text
 
     def test_paper_gallery_figure_titles(self):
         resp = client.get("/static/scripts/paper.js")
@@ -70,6 +77,8 @@ class TestRedesignRoutes:
             text = client.get(route).text.lower()
             for forbidden in FORBIDDEN_LEGACY:
                 assert forbidden not in text
+        explainer = client.get("/explainer").text.lower()
+        assert "data-preset" not in explainer
 
     def test_shared_nav_asset_uses_redesign_destinations(self):
         text = client.get("/static/nav.js").text

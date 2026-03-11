@@ -9,6 +9,7 @@
 /**
  * @typedef {{
  *   baseUrl?: string;
+ *   fallbackBaseUrl?: string;
  *   timeoutMs?: number;
  *   fetchImpl?: typeof fetch;
  *   runtimeConfig?: RuntimeConfig;
@@ -40,7 +41,13 @@ export function resolveApiBaseUrl(options = {}) {
     return explicitBase.replace(/\/$/, "");
   }
 
-  const runtimeBase = options.runtimeConfig?.apiBaseUrl?.trim();
+  const runtimeConfig =
+    options.runtimeConfig ??
+    (typeof window !== "undefined"
+      ? window.__EVENTRISK_RUNTIME_CONFIG__ ?? window.__RUNTIME_CONFIG__ ?? {}
+      : {});
+
+  const runtimeBase = runtimeConfig.apiBaseUrl?.trim();
   if (runtimeBase) {
     return runtimeBase.replace(/\/$/, "");
   }
@@ -53,7 +60,7 @@ export function resolveApiBaseUrl(options = {}) {
     return window.location.origin.replace(/\/$/, "");
   }
 
-  return "";
+  return options.fallbackBaseUrl?.trim()?.replace(/\/$/, "") ?? "";
 }
 
 /**
@@ -64,9 +71,8 @@ export function createApiClient(options = {}) {
   const timeoutMs = options.timeoutMs ?? 15_000;
   const baseUrl = resolveApiBaseUrl({
     baseUrl: options.baseUrl,
-    runtimeConfig:
-      options.runtimeConfig ??
-      (typeof window !== "undefined" ? window.__EVENTRISK_RUNTIME_CONFIG__ ?? {} : {}),
+    fallbackBaseUrl: options.fallbackBaseUrl,
+    runtimeConfig: options.runtimeConfig,
     locationOrigin: options.locationOrigin,
   });
 

@@ -1,193 +1,650 @@
-const PRESETS = {
-  superbowl: "/lib/presets/superbowl.json",
-  election: "/lib/presets/election.json",
-  weather: "/lib/presets/weather.json"
+// @ts-check
+
+import { ApiError, createApiClient } from "/static/scripts/api-client.mjs";
+
+const LIVE_API_BASE_URL = "https://market-hedge-simulator.replit.app";
+const STRATEGY_LABELS = {
+  external_hedge: "External Hedge",
+  internal_reprice: "Internal Reprice",
+  hybrid: "Hybrid",
+};
+const CURVE_METRICS = {
+  cvar: { label: "CVaR-95", accessor: (point) => Math.abs(point.cvar), axis: "Expected worst-case loss" },
+  max_loss: { label: "Max Loss", accessor: (point) => Math.abs(point.max_loss), axis: "Max loss" },
+  hedge_ratio: { label: "Optimal Hedge Ratio", accessor: (point) => point.hedge_ratio * 100, axis: "Optimal hedge ratio (%)" },
+};
+const BASE_DISTRIBUTION_INPUT = {
+  liability: 2000,
+  base_input: {
+    stake: 100,
+    american_odds: -110,
+    true_win_prob: 0.54,
+    fill_probability: 0.85,
+    n_paths: 500,
+    seed: "superbowl_v1",
+    slippage_bps: 8,
+    fee_bps: 2,
+    latency_bps: 3,
+    liquidity: {
+      available_liquidity: 1_000_000,
+      participation_rate: 0.2,
+      impact_factor: 0.6,
+      depth_exponent: 1.0,
+    },
+    internal_reprice: {
+      enabled: true,
+      odds_move_sensitivity: 0.000002,
+      handle_retention_decay: 0.25,
+      min_prob: 0.01,
+      max_prob: 0.99,
+    },
+  },
+};
+const CURVE_PAYLOAD = {
+  liability_min: 500,
+  liability_max: 8_000,
+  n_points: 5,
+  true_probability: 0.54,
+  prediction_market_price: 0.52,
+  fill_probability: 0.85,
+  objective: "min_cvar",
+  seed: "superbowl_v1",
+  n_paths: 500,
+  liquidity: {
+    available_liquidity: 1_000_000,
+    participation_rate: 0.2,
+    impact_factor: 0.6,
+    depth_exponent: 1.0,
+  },
 };
 
-const deck = document.getElementById("snapDeck");
-const dots = Array.from(document.querySelectorAll(".dot"));
-const stepEls = Array.from(document.querySelectorAll(".snap-step"));
-const backBtn = document.getElementById("btnBack");
-const nextBtn = document.getElementById("btnNext");
-const presetButtons = Array.from(document.querySelectorAll(".preset-btn"));
-const metaLine = document.getElementById("metaLine");
+const client = createApiClient({ fallbackBaseUrl: LIVE_API_BASE_URL });
+const state = {
+  activeStep: 0,
+  strategy: "external_hedge",
+  curveMetric: "cvar",
+  cache: new Map(),
+};
 
-let activeStep = 0;
-let activePreset = "superbowl";
-let activeData = null;
+const refs = {
+  deck: /** @type {HTMLElement} */ (document.getElementById("snapDeck")),
+  back: /** @type {HTMLButtonElement} */ (document.getElementById("btnBack")),
+  next: /** @type {HTMLButtonElement} */ (document.getElementById("btnNext")),
+  seedNote: document.getElementById("seedNote"),
+  metricSelect: /** @type {HTMLSelectElement} */ (document.getElementById("curveMetricSelect")),
+  stepDots: Array.from(document.querySelectorAll("[data-step-target]")),
+  strategyButtons: Array.from(document.querySelectorAll("[data-strategy]")),
+  steps: Array.from(document.querySelectorAll("[data-step-index]")),
+  plots: {
+    step1: /** @type {HTMLElement} */ (document.querySelector('[data-plot="step1"]')),
+    step2: /** @type {HTMLElement} */ (document.querySelector('[data-plot="step2"]')),
+    step3: /** @type {HTMLElement} */ (document.querySelector('[data-plot="step3"]')),
+  },
+  skeletons: {
+    step1: /** @type {HTMLElement} */ (document.querySelector('[data-skeleton="step1"]')),
+    step2: /** @type {HTMLElement} */ (document.querySelector('[data-skeleton="step2"]')),
+    step3: /** @type {HTMLElement} */ (document.querySelector('[data-skeleton="step3"]')),
+  },
+  errors: {
+    step1: /** @type {HTMLElement} */ (document.querySelector('[data-error="step1"]')),
+    step2: /** @type {HTMLElement} */ (document.querySelector('[data-error="step2"]')),
+    step3: /** @type {HTMLElement} */ (document.querySelector('[data-error="step3"]')),
+  },
+  metrics: {
+    step1Ev: document.getElementById("step1Ev"),
+    step1Cvar: document.getElementById("step1Cvar"),
+    step1Max: document.getElementById("step1Max"),
+    step2UnhedgedCvar: document.getElementById("step2UnhedgedCvar"),
+    step2HedgedCvar: document.getElementById("step2HedgedCvar"),
+    step2UnhedgedMax: document.getElementById("step2UnhedgedMax"),
+    step2HedgedMax: document.getElementById("step2HedgedMax"),
+    step2TailReduction: document.getElementById("step2TailReduction"),
+    step3MetricValue: document.getElementById("step3MetricValue"),
+    step3HedgeRatio: document.getElementById("step3HedgeRatio"),
+    step3BindingCount: document.getElementById("step3BindingCount"),
+  },
+};
 
-function readVar(name) {
-  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+init().catch((error) => {
+  console.error(error);
+  setStepState("step1", "error");
+  setStepState("step2", "error");
+  setStepState("step3", "error");
+});
+
+async function init() {
+  bindEvents();
+  updateControlUi();
+  resetMetricText();
+  await hydrateExplainer();
 }
 
-function fmtMoneyMillions(v) {
-  return `$${Number(v).toFixed(1)}M`;
+function bindEvents() {
+  refs.back.addEventListener("click", () => goToStep(state.activeStep - 1));
+  refs.next.addEventListener("click", () => goToStep(state.activeStep + 1));
+
+  refs.metricSelect.addEventListener("change", () => {
+    state.curveMetric = refs.metricSelect.value;
+    updateCurveCardFromCache();
+  });
+
+  refs.stepDots.forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.getAttribute("data-step-target"));
+      goToStep(index);
+    });
+  });
+
+  refs.strategyButtons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      const strategy = button.getAttribute("data-strategy");
+      if (!strategy || strategy === state.strategy) {
+        return;
+      }
+
+      state.strategy = strategy;
+      updateControlUi();
+      resetStepTwoThreeMetrics();
+      await hydrateStrategyViews(strategy);
+    });
+  });
+
+  refs.deck.addEventListener("scroll", syncStepFromScroll, { passive: true });
+
+  let touchStartY = 0;
+  refs.deck.addEventListener(
+    "touchstart",
+    (event) => {
+      touchStartY = event.touches[0]?.clientY ?? 0;
+    },
+    { passive: true },
+  );
+  refs.deck.addEventListener(
+    "touchend",
+    (event) => {
+      const touchEndY = event.changedTouches[0]?.clientY ?? touchStartY;
+      const delta = touchStartY - touchEndY;
+      if (Math.abs(delta) < 50) {
+        return;
+      }
+      goToStep(state.activeStep + (delta > 0 ? 1 : -1));
+    },
+    { passive: true },
+  );
+
+  window.addEventListener("resize", debounce(() => updateAllChartsFromCache(), 120));
 }
 
-function updateStepUi() {
-  dots.forEach((dot, idx) => dot.classList.toggle("active", idx === activeStep));
-  backBtn.disabled = activeStep === 0;
-  nextBtn.disabled = activeStep === stepEls.length - 1;
+async function hydrateExplainer() {
+  setStepState("step1", "loading");
+  setStepState("step2", "loading");
+  setStepState("step3", "loading");
+
+  await Promise.all([hydrateBaseline(), hydrateStrategyViews(state.strategy)]);
+  updateControlUi();
+}
+
+async function hydrateBaseline() {
+  const cached = state.cache.get("step1:baseline");
+  if (cached) {
+    renderStep1(cached);
+    return cached;
+  }
+
+  try {
+    const payload = await fetchDistribution(0, "external_hedge");
+    const step1Data = payload.unhedged;
+    state.cache.set("step1:baseline", step1Data);
+    renderStep1(step1Data);
+    return step1Data;
+  } catch (error) {
+    setStepState("step1", "error");
+    throw error;
+  }
+}
+
+async function hydrateStrategyViews(strategy) {
+  const step2Key = `step2:${strategy}`;
+  const step3Key = `step3:${strategy}`;
+  const hasStep2Cache = state.cache.has(step2Key);
+  const hasStep3Cache = state.cache.has(step3Key);
+
+  if (hasStep2Cache) {
+    renderStep2(/** @type {any} */ (state.cache.get(step2Key)));
+  } else {
+    setStepState("step2", "loading");
+  }
+
+  if (hasStep3Cache) {
+    renderStep3(/** @type {any} */ (state.cache.get(step3Key)));
+  } else {
+    setStepState("step3", "loading");
+  }
+
+  const [step2Result, step3Result] = await Promise.allSettled([
+    hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy),
+    hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy),
+  ]);
+
+  if (step2Result.status === "fulfilled") {
+    state.cache.set(step2Key, step2Result.value);
+    if (strategy === state.strategy) {
+      renderStep2(step2Result.value);
+    }
+  } else if (!hasStep2Cache && strategy === state.strategy) {
+    console.error(step2Result.reason);
+    setStepState("step2", "error");
+  }
+
+  if (step3Result.status === "fulfilled") {
+    state.cache.set(step3Key, step3Result.value);
+    if (strategy === state.strategy) {
+      renderStep3(step3Result.value);
+    }
+  } else if (!hasStep3Cache && strategy === state.strategy) {
+    console.error(step3Result.reason);
+    setStepState("step3", "error");
+  }
+}
+
+async function fetchStep2(strategy) {
+  const [unhedgedPayload, hedgedPayload] = await Promise.all([
+    fetchDistribution(0, strategy),
+    fetchDistribution(0.5, strategy),
+  ]);
+
+  return {
+    strategy,
+    unhedged: unhedgedPayload.unhedged,
+    hedged: hedgedPayload.hedged,
+    hedge_fraction: hedgedPayload.hedge_fraction,
+  };
+}
+
+async function fetchStep3(strategy) {
+  return client.fetchJson("/api/risk-transfer/interactive", {
+    method: "POST",
+    body: JSON.stringify({
+      ...CURVE_PAYLOAD,
+      strategy,
+    }),
+  });
+}
+
+async function fetchDistribution(hedgeFraction, strategy) {
+  return client.fetchJson("/api/risk-transfer/distribution", {
+    method: "POST",
+    body: JSON.stringify({
+      strategy,
+      liability: BASE_DISTRIBUTION_INPUT.liability,
+      hedge_fraction: hedgeFraction,
+      base_input: BASE_DISTRIBUTION_INPUT.base_input,
+    }),
+  });
+}
+
+function renderStep1(data) {
+  renderHistogram({
+    host: refs.plots.step1,
+    title: "Unhedged P&L Distribution",
+    primaryName: "Unhedged",
+    primaryColor: "#e8ae52",
+    primary: data,
+    annotationLabel: "Tail exposure",
+    annotationValue: data.cvar_95,
+  });
+
+  refs.metrics.step1Ev.textContent = formatCurrency(data.ev);
+  refs.metrics.step1Cvar.textContent = formatCurrency(data.cvar_95);
+  refs.metrics.step1Max.textContent = formatCurrency(data.max_loss);
+  setStepState("step1", "ready");
+}
+
+function renderStep2(data) {
+  renderHistogram({
+    host: refs.plots.step2,
+    title: "Hedged vs. Unhedged Overlay",
+    primaryName: "Unhedged",
+    primaryColor: "#e8ae52",
+    primary: data.unhedged,
+    secondaryName: "Hedged",
+    secondaryColor: "#5bc6c4",
+    secondary: data.hedged,
+    annotationLabel: "CVaR-95 shift",
+    annotationValue: data.hedged.cvar_95,
+  });
+
+  const tailReduction =
+    ((data.unhedged.cvar_95 - data.hedged.cvar_95) / Math.max(Math.abs(data.unhedged.cvar_95), 1e-6)) * 100;
+
+  refs.metrics.step2UnhedgedCvar.textContent = formatCurrency(data.unhedged.cvar_95);
+  refs.metrics.step2HedgedCvar.textContent = formatCurrency(data.hedged.cvar_95);
+  refs.metrics.step2UnhedgedMax.textContent = formatCurrency(data.unhedged.max_loss);
+  refs.metrics.step2HedgedMax.textContent = formatCurrency(data.hedged.max_loss);
+  refs.metrics.step2TailReduction.textContent = `${tailReduction.toFixed(1)}%`;
+  setStepState("step2", "ready");
+}
+
+function renderStep3(data) {
+  const metric = CURVE_METRICS[state.curveMetric];
+  const points = data.curve_points;
+  const lastPoint = points[points.length - 1];
+  const bindingCount = points.filter((point) => point.liquidity_binding).length;
+
+  refs.metrics.step3MetricValue.textContent =
+    state.curveMetric === "hedge_ratio"
+      ? `${(lastPoint.hedge_ratio * 100).toFixed(0)}%`
+      : formatCurrency(metric.accessor(lastPoint));
+  refs.metrics.step3HedgeRatio.textContent = `${(lastPoint.hedge_ratio * 100).toFixed(0)}%`;
+  refs.metrics.step3BindingCount.textContent = `${bindingCount}/${points.length}`;
+
+  const yValues = points.map((point) => metric.accessor(point));
+  const xValues = points.map((point) => point.liability);
+  const markerColors = points.map((point) =>
+    point.liquidity_binding ? "#e8ae52" : state.strategy === "external_hedge" ? "#5bc6c4" : "#8ab4ff",
+  );
+  const zoneShapes = buildZoneShapes(yValues);
+
+  window.Plotly.react(
+    refs.plots.step3,
+    [
+      {
+        x: xValues,
+        y: yValues,
+        type: "scatter",
+        mode: "lines+markers",
+        name: metric.label,
+        line: { color: "#5bc6c4", width: 3 },
+        marker: { size: 9, color: markerColors, line: { width: 1, color: "#0a0e1a" } },
+        hovertemplate:
+          "Liability: %{x:$,.0f}<br>" +
+          `${metric.label}: %{y:${state.curveMetric === "hedge_ratio" ? ".1f" : "$,.2f"}}<br>` +
+          "Optimal hedge: %{customdata:.0%}<extra></extra>",
+        customdata: points.map((point) => point.hedge_ratio),
+      },
+    ],
+    {
+      ...baseLayout("Liquidity-Constrained Risk Transfer Curve", "Sportsbook liability", metric.axis),
+      shapes: zoneShapes,
+      annotations: [
+        zoneLabel("Meaningful hedging", 0.16),
+        zoneLabel("Partial hedging", 0.5),
+        zoneLabel("No effective hedging", 0.84),
+      ],
+      yaxis: {
+        title: metric.axis,
+        tickformat: state.curveMetric === "hedge_ratio" ? ",.0f" : "$,.0f",
+        gridcolor: "rgba(156, 171, 205, 0.1)",
+        zeroline: false,
+      },
+      xaxis: {
+        title: "Sportsbook liability ($)",
+        tickformat: "$,.0f",
+        gridcolor: "rgba(156, 171, 205, 0.08)",
+        zeroline: false,
+      },
+    },
+    { displayModeBar: false, responsive: true },
+  );
+
+  setStepState("step3", "ready");
+}
+
+function renderHistogram({ host, title, primaryName, primaryColor, primary, secondaryName, secondaryColor, secondary, annotationLabel, annotationValue }) {
+  const traces = [
+    {
+      x: primary.bin_mids,
+      y: primary.counts,
+      type: "bar",
+      name: primaryName,
+      marker: { color: primaryColor, opacity: 0.62 },
+      hovertemplate: `${primaryName}<br>P&L: %{x:$,.2f}<br>Paths: %{y}<extra></extra>`,
+    },
+  ];
+
+  if (secondary) {
+    traces.push({
+      x: secondary.bin_mids,
+      y: secondary.counts,
+      type: "bar",
+      name: secondaryName,
+      marker: { color: secondaryColor, opacity: 0.58 },
+      hovertemplate: `${secondaryName}<br>P&L: %{x:$,.2f}<br>Paths: %{y}<extra></extra>`,
+    });
+  }
+
+  const maxCount = Math.max(...primary.counts, ...(secondary?.counts ?? [0]));
+  const annotations = [
+    {
+      x: annotationValue,
+      y: maxCount * 0.9,
+      text: annotationLabel,
+      showarrow: true,
+      arrowhead: 4,
+      ax: 24,
+      ay: -38,
+      font: { color: "#edf2ff", family: "IBM Plex Mono, monospace", size: 11 },
+      arrowcolor: primaryColor,
+      bgcolor: "rgba(10, 14, 26, 0.78)",
+      bordercolor: "rgba(146, 166, 198, 0.22)",
+    },
+  ];
+
+  if (secondary) {
+    annotations.push({
+      x: secondary.cvar_95,
+      y: maxCount * 0.66,
+      text: `${secondaryName} CVaR-95`,
+      showarrow: true,
+      arrowhead: 4,
+      ax: -24,
+      ay: -28,
+      font: { color: "#edf2ff", family: "IBM Plex Mono, monospace", size: 11 },
+      arrowcolor: secondaryColor,
+      bgcolor: "rgba(10, 14, 26, 0.78)",
+      bordercolor: "rgba(146, 166, 198, 0.22)",
+    });
+  }
+
+  window.Plotly.react(
+    host,
+    traces,
+    {
+      ...baseLayout(title, "P&L outcome", "Path count"),
+      barmode: secondary ? "overlay" : "relative",
+      xaxis: {
+        title: "P&L outcome ($)",
+        tickformat: "$,.0f",
+        gridcolor: "rgba(156, 171, 205, 0.08)",
+        zeroline: false,
+      },
+      yaxis: {
+        title: "Path count",
+        gridcolor: "rgba(156, 171, 205, 0.08)",
+        zeroline: false,
+      },
+      annotations,
+    },
+    { displayModeBar: false, responsive: true },
+  );
+}
+
+function baseLayout(title, xTitle, yTitle) {
+  return {
+    title: { text: title, font: { family: "DM Serif Display, serif", size: 24, color: "#edf2ff" } },
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    margin: { l: 56, r: 24, t: 54, b: 52 },
+    font: { family: "IBM Plex Mono, monospace", color: "#edf2ff", size: 12 },
+    legend: {
+      orientation: "h",
+      x: 0,
+      y: 1.12,
+      bgcolor: "rgba(0,0,0,0)",
+      font: { family: "IBM Plex Mono, monospace", color: "#9cabca", size: 11 },
+    },
+    xaxis: {
+      title: xTitle,
+      color: "#9cabca",
+      tickcolor: "rgba(146, 166, 198, 0.22)",
+      titlefont: { family: "IBM Plex Mono, monospace", size: 12, color: "#9cabca" },
+    },
+    yaxis: {
+      title: yTitle,
+      color: "#9cabca",
+      tickcolor: "rgba(146, 166, 198, 0.22)",
+      titlefont: { family: "IBM Plex Mono, monospace", size: 12, color: "#9cabca" },
+    },
+  };
+}
+
+function updateCurveCardFromCache() {
+  const data = state.cache.get(`step3:${state.strategy}`);
+  if (data) {
+    renderStep3(data);
+  }
+}
+
+function updateAllChartsFromCache() {
+  const baseline = state.cache.get("step1:baseline");
+  const step2 = state.cache.get(`step2:${state.strategy}`);
+  const step3 = state.cache.get(`step3:${state.strategy}`);
+
+  if (baseline) renderStep1(baseline);
+  if (step2) renderStep2(step2);
+  if (step3) renderStep3(step3);
+}
+
+function setStepState(step, status) {
+  const plot = refs.plots[step];
+  const skeleton = refs.skeletons[step];
+  const error = refs.errors[step];
+  if (!plot || !skeleton || !error) {
+    return;
+  }
+
+  skeleton.hidden = status !== "loading";
+  error.hidden = status !== "error";
+  plot.hidden = status !== "ready";
 }
 
 function goToStep(index) {
-  activeStep = Math.max(0, Math.min(index, stepEls.length - 1));
-  stepEls[activeStep].scrollIntoView({ behavior: "smooth", block: "start" });
-  updateStepUi();
+  const nextIndex = Math.max(0, Math.min(index, refs.steps.length - 1));
+  state.activeStep = nextIndex;
+  refs.steps[nextIndex].scrollIntoView({ behavior: "smooth", block: "start" });
+  updateControlUi();
 }
 
-function pathFromSeries(xVals, yVals, width, height, maxY) {
-  const left = 42;
-  const right = width - 18;
-  const top = 16;
-  const bottom = height - 26;
-  const innerW = right - left;
-  const innerH = bottom - top;
-  return xVals.map((x, i) => {
-    const px = left + (i / Math.max(1, xVals.length - 1)) * innerW;
-    const py = bottom - (yVals[i] / maxY) * innerH;
-    return `${i === 0 ? "M" : "L"}${px.toFixed(2)},${py.toFixed(2)}`;
-  }).join(" ");
-}
+function syncStepFromScroll() {
+  const top = refs.deck.scrollTop;
+  let candidate = 0;
+  refs.steps.forEach((step, index) => {
+    if (top >= step.offsetTop - 120) {
+      candidate = index;
+    }
+  });
 
-function renderDistribution(containerId, bins, firstSeries, secondSeries) {
-  const host = document.getElementById(containerId);
-  const width = host.clientWidth || 860;
-  const height = 340;
-  const maxY = Math.max(...firstSeries, ...(secondSeries || [0])) * 1.1;
-  const axisColor = readVar("--color-border");
-  const unhedgedColor = readVar("--color-alert-red");
-  const hedgedColor = readVar("--color-alert-green");
-
-  const unhedgedPath = pathFromSeries(bins, firstSeries, width, height, maxY);
-  const hedgedPath = secondSeries ? pathFromSeries(bins, secondSeries, width, height, maxY) : "";
-
-  host.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="chart" role="img" aria-label="Distribution chart">
-      <rect x="0" y="0" width="${width}" height="${height}" fill="transparent"></rect>
-      <line x1="42" y1="16" x2="42" y2="314" stroke="${axisColor}" stroke-width="1"></line>
-      <line x1="42" y1="314" x2="${width - 18}" y2="314" stroke="${axisColor}" stroke-width="1"></line>
-      <path d="${unhedgedPath}" fill="none" stroke="${unhedgedColor}" stroke-width="3"></path>
-      ${secondSeries ? `<path d="${hedgedPath}" fill="none" stroke="${hedgedColor}" stroke-width="3"></path>` : ""}
-      <text x="48" y="26" font-size="12" fill="${readVar("--color-ink-soft")}">P&amp;L density</text>
-      <text x="${width - 130}" y="330" font-size="12" fill="${readVar("--color-ink-soft")}">Outcome bin (USD M)</text>
-      <text x="46" y="48" font-size="11" fill="${unhedgedColor}">Unhedged</text>
-      ${secondSeries ? `<text x="130" y="48" font-size="11" fill="${hedgedColor}">Hedged</text>` : ""}
-    </svg>
-  `;
-}
-
-function renderRiskTransfer(points) {
-  const host = document.getElementById("step3Chart");
-  const width = host.clientWidth || 860;
-  const height = 360;
-  const axisColor = readVar("--color-border");
-  const inkSoft = readVar("--color-ink-soft");
-  const greenSoft = readVar("--color-alert-green-soft");
-  const yellowSoft = readVar("--color-alert-yellow-soft");
-  const redSoft = readVar("--color-alert-red-soft");
-  const red = readVar("--color-alert-red");
-  const green = readVar("--color-alert-green");
-
-  const left = 52;
-  const right = width - 22;
-  const top = 20;
-  const bottom = height - 34;
-  const innerW = right - left;
-  const innerH = bottom - top;
-
-  const maxL = Math.max(...points.map(p => p.liability_m));
-  const maxR = Math.max(...points.map(p => p.tail_risk_unhedged_m)) * 1.08;
-
-  function px(liability) {
-    return left + (liability / maxL) * innerW;
+  if (candidate !== state.activeStep) {
+    state.activeStep = candidate;
+    updateControlUi();
   }
-  function py(risk) {
-    return bottom - (risk / maxR) * innerH;
-  }
-
-  const unhedged = points.map((p, i) => `${i === 0 ? "M" : "L"}${px(p.liability_m)},${py(p.tail_risk_unhedged_m)}`).join(" ");
-  const hedged = points.map((p, i) => `${i === 0 ? "M" : "L"}${px(p.liability_m)},${py(p.tail_risk_hedged_m)}`).join(" ");
-
-  const circles = points.map((p) => {
-    const color = p.feasibility === "green" ? readVar("--color-alert-green") : p.feasibility === "yellow" ? readVar("--color-alert-yellow") : readVar("--color-alert-red");
-    return `<circle cx="${px(p.liability_m)}" cy="${py(p.tail_risk_hedged_m)}" r="4.5" fill="${color}"></circle>`;
-  }).join("");
-
-  host.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" class="chart" role="img" aria-label="Risk transfer curve">
-      <rect x="${left}" y="${top}" width="${innerW}" height="${innerH / 3}" fill="${greenSoft}"></rect>
-      <rect x="${left}" y="${top + innerH / 3}" width="${innerW}" height="${innerH / 3}" fill="${yellowSoft}"></rect>
-      <rect x="${left}" y="${top + (innerH * 2) / 3}" width="${innerW}" height="${innerH / 3}" fill="${redSoft}"></rect>
-      <line x1="${left}" y1="${top}" x2="${left}" y2="${bottom}" stroke="${axisColor}" stroke-width="1"></line>
-      <line x1="${left}" y1="${bottom}" x2="${right}" y2="${bottom}" stroke="${axisColor}" stroke-width="1"></line>
-      <path d="${unhedged}" fill="none" stroke="${red}" stroke-width="3"></path>
-      <path d="${hedged}" fill="none" stroke="${green}" stroke-width="3"></path>
-      ${circles}
-      <text x="${left + 8}" y="${top + 16}" font-size="11" fill="${inkSoft}">Green zone: meaningful hedge transfer</text>
-      <text x="${left + 8}" y="${top + innerH / 3 + 16}" font-size="11" fill="${inkSoft}">Yellow zone: partial hedge transfer</text>
-      <text x="${left + 8}" y="${top + (innerH * 2) / 3 + 16}" font-size="11" fill="${inkSoft}">Red zone: liquidity constrained</text>
-      <text x="${right - 152}" y="${height - 10}" font-size="12" fill="${inkSoft}">Liability (USD M)</text>
-      <text x="${left + 6}" y="${top + 28}" font-size="11" fill="${red}">Unhedged tail risk</text>
-      <text x="${left + 130}" y="${top + 28}" font-size="11" fill="${green}">Hedged tail risk</text>
-    </svg>
-  `;
 }
 
-function renderMetrics(stepData, prefix) {
-  document.getElementById(`${prefix}M1`).textContent = fmtMoneyMillions(stepData.ev_m ?? stepData.ev_unhedged_m);
-  const cvar = stepData.cvar95_m ?? stepData.cvar95_unhedged_m;
-  document.getElementById(`${prefix}M2`).textContent = fmtMoneyMillions(cvar);
-  const max = stepData.max_loss_m ?? stepData.cvar95_hedged_m ?? cvar;
-  document.getElementById(`${prefix}M3`).textContent = fmtMoneyMillions(max);
+function updateControlUi() {
+  refs.back.disabled = state.activeStep === 0;
+  refs.next.disabled = state.activeStep === refs.steps.length - 1;
+  refs.metricSelect.value = state.curveMetric;
+  refs.seedNote.textContent = `Seed superbowl_v1 · 500 paths · Strategy ${STRATEGY_LABELS[state.strategy]}`;
+
+  refs.stepDots.forEach((button, index) => {
+    button.classList.toggle("active", index === state.activeStep);
+  });
+
+  refs.strategyButtons.forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-strategy") === state.strategy);
+  });
 }
 
-async function loadPreset(presetKey) {
-  const res = await fetch(PRESETS[presetKey]);
-  activeData = await res.json();
-  activePreset = presetKey;
-
-  presetButtons.forEach((btn) => btn.classList.toggle("active", btn.dataset.preset === presetKey));
-  metaLine.textContent = `${activeData.meta.event} · Stake ${activeData.meta.stake_usd.toLocaleString()} · Sim count ${activeData.meta.simulation_count.toLocaleString()}`;
-  renderDistribution("step1Chart", activeData.step1.bins, activeData.step1.unhedged_density);
-  renderDistribution("step2Chart", activeData.step2.bins, activeData.step2.unhedged_density, activeData.step2.hedged_density);
-  renderRiskTransfer(activeData.step3.points);
-
-  renderMetrics(activeData.step1, "s1");
-  renderMetrics(activeData.step2, "s2");
-  document.getElementById("s2Tail").textContent = `${activeData.step2.tail_reduction_pct.toFixed(1)}%`;
-
-  const maxPoint = activeData.step3.points[activeData.step3.points.length - 1];
-  document.getElementById("s3M1").textContent = fmtMoneyMillions(maxPoint.tail_risk_unhedged_m);
-  document.getElementById("s3M2").textContent = fmtMoneyMillions(maxPoint.tail_risk_hedged_m);
-  document.getElementById("s3M3").textContent = `${(maxPoint.hedge_utilization * 100).toFixed(0)}%`;
+function buildZoneShapes(values) {
+  const maxValue = Math.max(...values, 1);
+  return [
+    zoneRect(0, maxValue / 3, "rgba(50, 143, 114, 0.18)"),
+    zoneRect(maxValue / 3, (maxValue * 2) / 3, "rgba(214, 170, 79, 0.16)"),
+    zoneRect((maxValue * 2) / 3, maxValue, "rgba(156, 69, 76, 0.16)"),
+  ];
 }
 
-presetButtons.forEach((btn) => {
-  btn.addEventListener("click", () => loadPreset(btn.dataset.preset));
-});
+function zoneRect(y0, y1, color) {
+  return {
+    type: "rect",
+    xref: "paper",
+    yref: "y",
+    x0: 0,
+    x1: 1,
+    y0,
+    y1,
+    fillcolor: color,
+    line: { width: 0 },
+    layer: "below",
+  };
+}
 
-backBtn.addEventListener("click", () => goToStep(activeStep - 1));
-nextBtn.addEventListener("click", () => goToStep(activeStep + 1));
+function zoneLabel(text, yPosition) {
+  return {
+    xref: "paper",
+    yref: "paper",
+    x: 0.02,
+    y: 1 - yPosition,
+    text,
+    showarrow: false,
+    font: { family: "IBM Plex Mono, monospace", size: 11, color: "#9cabca" },
+    bgcolor: "rgba(10, 14, 26, 0.35)",
+  };
+}
 
-deck.addEventListener("scroll", () => {
-  const top = deck.scrollTop;
-  let idx = 0;
-  for (let i = 0; i < stepEls.length; i += 1) {
-    if (top >= stepEls[i].offsetTop - 120) idx = i;
+function resetMetricText() {
+  Object.values(refs.metrics).forEach((node) => {
+    if (node) {
+      node.textContent = "—";
+    }
+  });
+}
+
+function resetStepTwoThreeMetrics() {
+  for (const key of [
+    "step2UnhedgedCvar",
+    "step2HedgedCvar",
+    "step2UnhedgedMax",
+    "step2HedgedMax",
+    "step2TailReduction",
+    "step3MetricValue",
+    "step3HedgeRatio",
+    "step3BindingCount",
+  ]) {
+    refs.metrics[key].textContent = "—";
   }
-  if (idx !== activeStep) {
-    activeStep = idx;
-    updateStepUi();
+}
+
+function formatCurrency(value) {
+  const formatter = new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
+  });
+  return formatter.format(value);
+}
+
+function debounce(fn, waitMs) {
+  let timer = 0;
+  return () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => fn(), waitMs);
+  };
+}
+
+function normalizeError(error) {
+  if (error instanceof ApiError) {
+    return error.message;
   }
-});
-
-window.addEventListener("resize", () => {
-  if (!activeData) return;
-  renderDistribution("step1Chart", activeData.step1.bins, activeData.step1.unhedged_density);
-  renderDistribution("step2Chart", activeData.step2.bins, activeData.step2.unhedged_density, activeData.step2.hedged_density);
-  renderRiskTransfer(activeData.step3.points);
-});
-
-loadPreset(activePreset);
-updateStepUi();
+  return "Unable to load live simulation data.";
+}
