@@ -66,16 +66,16 @@
   var configuredPaperUrl = typeof runtimeConfig.paperUrl === 'string' ? runtimeConfig.paperUrl.trim() : '';
   var paperUrl = configuredPaperUrl;
   var paperLinkMarkup = paperUrl
-    ? '<a class="site-nav-link" href="' + escapeAttr(paperUrl) + '" target="_blank" rel="noopener noreferrer">Read the paper</a>'
-    : '<span class="site-nav-link" aria-disabled="true">Read the paper</span>';
+    ? '<a class="site-nav-link" href="' + escapeAttr(paperUrl) + '" target="_blank" rel="noopener noreferrer">Read the Paper</a>'
+    : '<span class="site-nav-link" aria-disabled="true">Read the Paper</span>';
 
   var nav = document.createElement('nav');
   nav.className = 'site-nav';
   nav.innerHTML = `
     <a class="site-nav-logo" href="/explainer">EventRisk</a>
     <div class="site-nav-links">
-      <a class="site-nav-link" href="/explainer">Explainer</a>
-      <a class="site-nav-link" href="/paper">Paper Figures</a>
+      <a class="site-nav-link" href="/explainer">The Mechanism</a>
+      <a class="site-nav-link" href="/paper">The Analysis</a>
       <a class="site-nav-link" href="/simulator">Stress Test</a>
       ${paperLinkMarkup}
     </div>

@@ -111,7 +111,7 @@ class TestSimulatorRuntimeRoute:
         assert "Run Simulation" in text
         assert "Copy Share Link" in text
         assert "EventRisk" in text
-        assert "Read the paper" in text
+        assert "Read the Paper" in text
         assert "Sportsbook Loss Distribution" in text
         assert "Liquidity-Constrained Risk Transfer Curve" in text
         assert "Hedging Efficiency Frontier" in text
@@ -146,7 +146,7 @@ class TestSimulatorRuntimeRoute:
     def test_blank_paper_url_env_falls_back_to_default_external_link(self, monkeypatch):
         monkeypatch.setenv("PAPER_URL", "   ")
         text = client.get("/simulator").text
-        assert "Read the paper" in text
+        assert "Read the Paper" in text
         assert 'href="https://eventrisk.ai/paper.pdf"' in text
 
     def test_simulator_assets_are_served(self):
