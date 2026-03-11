@@ -83,6 +83,9 @@ class TestRedesignRoutes:
         assert "figure-notes" not in js
         assert js.count("window.Plotly.react(") == 6
         assert 'const PRESETS = {' in js
+        assert 'document.addEventListener("DOMContentLoaded", bootPaper, { once: true });' in js
+        assert 'typeof window.Plotly?.react !== "function"' in js
+        assert 'requestAnimationFrame(() => renderFigures(data));' in js
 
     def test_paper_route_includes_plotly_and_figure_mounts(self):
         resp = client.get("/paper")
@@ -91,6 +94,7 @@ class TestRedesignRoutes:
         assert "https://cdn.plot.ly/plotly-2.35.2.min.js" in text
         assert 'id="figureList"' in text
         assert "/static/scripts/paper.js" in text
+        assert text.index('/runtime-config.js" defer') < text.index('plotly-2.35.2.min.js" defer') < text.index('/static/scripts/paper.js" defer')
 
     def test_redesigned_routes_hide_legacy_controls(self):
         for route in ("/explainer", "/paper", "/simulator"):
@@ -154,3 +158,17 @@ class TestRedesignRoutes:
         assert "!forceRefresh && hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy)" in text
         assert "!forceRefresh && hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy)" in text
         assert 'seed: "superbowl_v1"' in text
+        assert 'refs.deck.scrollTo({ top: refs.steps[nextIndex].offsetTop, behavior: "smooth" });' in text
+        assert "const deckMidpoint = deckRect.top + deckRect.height / 2;" in text
+
+    def test_explainer_step_scroller_css_avoids_chrome_height_traps(self):
+        css = client.get("/static/styles/eventrisk.css").text
+        assert ".snap-deck {" in css
+        assert "max-height: calc(100svh - var(--nav-height) - var(--footer-height) - 252px);" in css
+        assert "min-height: clamp(640px, calc(100svh - var(--nav-height) - var(--footer-height) - 252px), 920px);" in css
+        assert "overflow-y: auto;" in css
+        assert "overflow-x: visible;" in css
+        assert "scroll-snap-type: y proximity;" in css
+        assert "scroll-padding-top: 1rem;" in css
+        assert ".snap-step {" in css
+        assert "overflow: visible;" in css

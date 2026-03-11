@@ -113,6 +113,7 @@ code {
 .page-main {
   min-height: 0;
   padding: 1.5rem;
+  overflow: visible;
 }
 
 .app-shell {
@@ -368,21 +369,24 @@ code {
 
 .snap-deck {
   max-width: 1320px;
-  height: calc(100vh - var(--nav-height) - var(--footer-height) - 252px);
-  min-height: 560px;
+  min-height: clamp(640px, calc(100svh - var(--nav-height) - var(--footer-height) - 252px), 920px);
+  max-height: calc(100svh - var(--nav-height) - var(--footer-height) - 252px);
   margin: 0 auto;
   overflow-y: auto;
+  overflow-x: visible;
   scroll-behavior: smooth;
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: y proximity;
+  scroll-padding-top: 1rem;
 }
 
 .snap-step {
-  min-height: calc(100vh - var(--nav-height) - var(--footer-height) - 252px);
+  min-height: clamp(640px, calc(100svh - var(--nav-height) - var(--footer-height) - 252px), 920px);
   padding: 1rem 0 1.4rem;
   scroll-snap-align: start;
   display: grid;
   align-content: start;
   gap: 1rem;
+  overflow: visible;
 }
 
 .step-copy {
