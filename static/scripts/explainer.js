@@ -59,6 +59,7 @@ const CURVE_PAYLOAD = {
 };
 
 const client = createApiClient({ fallbackBaseUrl: LIVE_API_BASE_URL });
+const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debugApi") === "1";
 const state = {
   activeStep: 0,
   strategy: "external_hedge",
@@ -113,6 +114,9 @@ init().catch((error) => {
 });
 
 async function init() {
+  if (shouldDebugApiBase) {
+    console.info("[explainer] resolved API base:", client.baseUrl);
+  }
   bindEvents();
   updateControlUi();
   resetMetricText();
