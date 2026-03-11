@@ -129,7 +129,7 @@ class TestSimulatorRuntimeRoute:
         assert "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert 'apiBaseUrl": "https://market-hedge-simulator.replit.app"' in resp.text
-        assert 'paperUrl": "https://eventrisk.ai/paper"' in resp.text
+        assert 'paperUrl": "https://eventrisk.ai/paper.pdf"' in resp.text
 
     def test_runtime_config_ignores_blank_api_base_env_and_keeps_replit_host(self, monkeypatch):
         monkeypatch.setenv("API_BASE_URL", "   ")
@@ -147,7 +147,7 @@ class TestSimulatorRuntimeRoute:
         monkeypatch.setenv("PAPER_URL", "   ")
         text = client.get("/simulator").text
         assert "Read the paper" in text
-        assert 'href="https://eventrisk.ai/paper"' in text
+        assert 'href="https://eventrisk.ai/paper.pdf"' in text
 
     def test_simulator_assets_are_served(self):
         for route, content_type in (

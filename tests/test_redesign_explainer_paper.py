@@ -128,7 +128,7 @@ class TestRedesignRoutes:
 
     def test_redesign_routes_fall_back_to_default_external_paper_link_when_missing(self, monkeypatch):
         monkeypatch.delenv("PAPER_URL", raising=False)
-        expected = "https://eventrisk.ai/paper"
+        expected = "https://eventrisk.ai/paper.pdf"
         for route in ("/explainer", "/paper", "/simulator"):
             text = client.get(route).text
             assert "Read the paper" in text
@@ -136,6 +136,11 @@ class TestRedesignRoutes:
             links = PAPER_LINK_PATTERN.findall(text)
             assert links
             assert all(href == expected for href, _ in links)
+
+    def test_paper_pdf_route_serves_hosted_pdf(self):
+        resp = client.get("/paper.pdf")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"].startswith("application/pdf")
 
     def test_explainer_controls_trigger_live_refresh_paths(self):
         text = client.get("/static/scripts/explainer.js").text

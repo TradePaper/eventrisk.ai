@@ -53,7 +53,7 @@ DB_PATH = "tmp/contracts.db"
 
 app = FastAPI(title="ProbEdge Research")
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
-DEFAULT_PAPER_URL = "https://eventrisk.ai/paper"
+DEFAULT_PAPER_URL = "https://eventrisk.ai/paper.pdf"
 DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app"
 PAPER_URL_ENV_KEY = "PAPER_URL"
 _ALLOWED_CORS_ORIGINS = [
@@ -134,6 +134,11 @@ def api_client_script() -> FileResponse:
 @app.get("/static/scripts/simulator-state.mjs")
 def simulator_state_script() -> FileResponse:
     return _serve_asset("static/scripts/simulator-state.mjs", "application/javascript")
+
+
+@app.get("/paper.pdf")
+def paper_pdf() -> FileResponse:
+    return _serve_asset("static/paper.pdf", "application/pdf")
 
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
