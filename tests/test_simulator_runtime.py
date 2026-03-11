@@ -174,6 +174,13 @@ class TestSimulatorRuntimeRoute:
         assert 'window.history.replaceState({}, "", `/simulator?${query}`);' in text
         assert "const shareUrl = `${window.location.origin}/simulator?${serializeSimulatorState(state)}`;" in text
 
+    def test_simulator_app_does_not_render_duplicate_plot_titles(self):
+        text = client.get("/static/scripts/simulator-app.mjs").text
+        assert 'title: { text: title' not in text
+        assert 'baseLayout("Sportsbook Loss Distribution"' not in text
+        assert 'baseLayout("Liquidity-Constrained Risk Transfer Curve"' not in text
+        assert 'baseLayout("Hedging Efficiency Frontier"' not in text
+
     def test_api_client_accepts_runtime_config_key_emitted_by_server(self):
         text = client.get("/static/scripts/api-client.mjs").text
         assert "window.__EVENTRISK_CONFIG" in text
