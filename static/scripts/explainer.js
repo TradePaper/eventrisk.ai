@@ -57,6 +57,7 @@ const CURVE_PAYLOAD = {
     depth_exponent: 1.0,
   },
 };
+const EXPLAINER_FALLBACK_PRESET = "/lib/presets/superbowl.json";
 
 const client = createApiClient({ fallbackBaseUrl: LIVE_API_BASE_URL });
 const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debugApi") === "1";
@@ -65,6 +66,7 @@ const state = {
   strategy: "external_hedge",
   curveMetric: "cvar",
   cache: new Map(),
+  hasStaticFallback: false,
 };
 
 const refs = {
@@ -120,6 +122,7 @@ async function init() {
   bindEvents();
   updateControlUi();
   resetMetricText();
+  await hydrateStaticFallback();
   await hydrateExplainer();
 }
 
@@ -182,12 +185,30 @@ function bindEvents() {
 }
 
 async function hydrateExplainer() {
-  setStepState("step1", "loading");
-  setStepState("step2", "loading");
-  setStepState("step3", "loading");
+  if (!state.hasStaticFallback) {
+    setStepState("step1", "loading");
+    setStepState("step2", "loading");
+    setStepState("step3", "loading");
+  }
 
   await Promise.all([hydrateBaseline(), hydrateStrategyViews(state.strategy, { forceRefresh: true })]);
   updateControlUi();
+}
+
+async function hydrateStaticFallback() {
+  try {
+    const response = await fetch(EXPLAINER_FALLBACK_PRESET, { cache: "force-cache" });
+    if (!response.ok) {
+      throw new Error(`fallback preset HTTP ${response.status}`);
+    }
+    const preset = await response.json();
+    renderStaticStep1(preset);
+    renderStaticStep2(preset);
+    renderStaticStep3(preset);
+    state.hasStaticFallback = true;
+  } catch (error) {
+    console.warn("[explainer] static fallback unavailable", error);
+  }
 }
 
 async function hydrateBaseline() {
@@ -488,6 +509,170 @@ function renderHistogram({ host, title, primaryName, primaryColor, primary, seco
   );
 }
 
+function renderStaticStep1(preset) {
+  renderStaticDistribution({
+    host: refs.plots.step1,
+    title: "Unhedged P&L Distribution",
+    bins: preset.step1.bins,
+    primaryName: "Unhedged",
+    primaryValues: preset.step1.unhedged_density,
+    primaryColor: "#e8ae52",
+    annotationValue: preset.step1.cvar95_m,
+    annotationLabel: "Tail exposure",
+  });
+
+  refs.metrics.step1Ev.textContent = formatCurrencyMillions(preset.step1.ev_m);
+  refs.metrics.step1Cvar.textContent = formatCurrencyMillions(preset.step1.cvar95_m);
+  refs.metrics.step1Max.textContent = formatCurrencyMillions(preset.step1.max_loss_m);
+  setStepState("step1", "ready");
+}
+
+function renderStaticStep2(preset) {
+  renderStaticDistribution({
+    host: refs.plots.step2,
+    title: "Hedged vs. Unhedged Overlay",
+    bins: preset.step2.bins,
+    primaryName: "Unhedged",
+    primaryValues: preset.step2.unhedged_density,
+    primaryColor: "#e8ae52",
+    secondaryName: "Hedged",
+    secondaryValues: preset.step2.hedged_density,
+    secondaryColor: "#5bc6c4",
+    annotationValue: preset.step2.cvar95_hedged_m,
+    annotationLabel: "CVaR-95 shift",
+  });
+
+  refs.metrics.step2UnhedgedCvar.textContent = formatCurrencyMillions(preset.step2.cvar95_unhedged_m);
+  refs.metrics.step2HedgedCvar.textContent = formatCurrencyMillions(preset.step2.cvar95_hedged_m);
+  refs.metrics.step2UnhedgedMax.textContent = formatCurrencyMillions(preset.step1.max_loss_m);
+  refs.metrics.step2HedgedMax.textContent = formatCurrencyMillions(preset.step2.cvar95_hedged_m);
+  refs.metrics.step2TailReduction.textContent = `${preset.step2.tail_reduction_pct.toFixed(1)}%`;
+  setStepState("step2", "ready");
+}
+
+function renderStaticStep3(preset) {
+  const points = preset.step3.points;
+  const metric = CURVE_METRICS[state.curveMetric];
+  const normalizedPoints = points.map((point) => ({
+    liability: point.liability_m,
+    cvar: -point.tail_risk_hedged_m * 1_000_000,
+    max_loss: -point.tail_risk_unhedged_m * 1_000_000,
+    hedge_ratio: Math.min(1, point.hedge_utilization),
+    liquidity_binding: point.feasibility === "red",
+  }));
+  renderPresetCurve(normalizedPoints, metric);
+  refs.metrics.step3MetricValue.textContent =
+    state.curveMetric === "hedge_ratio"
+      ? `${Math.round(normalizedPoints[normalizedPoints.length - 1].hedge_ratio * 100)}%`
+      : formatCurrencyMillions(-metric.accessor(normalizedPoints[normalizedPoints.length - 1]) / 1_000_000);
+  refs.metrics.step3HedgeRatio.textContent = `${Math.round(normalizedPoints[normalizedPoints.length - 1].hedge_ratio * 100)}%`;
+  refs.metrics.step3BindingCount.textContent = `${points.filter((point) => point.feasibility === "red").length}/${points.length}`;
+  setStepState("step3", "ready");
+}
+
+function renderStaticDistribution({ host, title, bins, primaryName, primaryValues, primaryColor, secondaryName, secondaryValues, secondaryColor, annotationValue, annotationLabel }) {
+  const traces = [
+    {
+      x: bins,
+      y: primaryValues,
+      type: "scatter",
+      mode: "lines",
+      name: primaryName,
+      line: { color: primaryColor, width: 3 },
+      fill: "tozeroy",
+      fillcolor: `${primaryColor}33`,
+      hovertemplate: `${primaryName}<br>P&L: %{x:.0f}M<br>Density: %{y:.2f}<extra></extra>`,
+    },
+  ];
+
+  if (secondaryValues && secondaryName && secondaryColor) {
+    traces.push({
+      x: bins,
+      y: secondaryValues,
+      type: "scatter",
+      mode: "lines",
+      name: secondaryName,
+      line: { color: secondaryColor, width: 3 },
+      fill: "tozeroy",
+      fillcolor: `${secondaryColor}29`,
+      hovertemplate: `${secondaryName}<br>P&L: %{x:.0f}M<br>Density: %{y:.2f}<extra></extra>`,
+    });
+  }
+
+  window.Plotly.react(
+    host,
+    traces,
+    {
+      ...baseLayout(title, "P&L outcome (USD, millions)", "Density"),
+      annotations: [
+        {
+          x: annotationValue,
+          y: Math.max(...primaryValues) * 0.9,
+          text: annotationLabel,
+          showarrow: true,
+          arrowhead: 4,
+          ax: 24,
+          ay: -38,
+          font: { color: "#edf2ff", family: "IBM Plex Mono, monospace", size: 11 },
+          arrowcolor: primaryColor,
+          bgcolor: "rgba(10, 14, 26, 0.78)",
+          bordercolor: "rgba(146, 166, 198, 0.22)",
+        },
+      ],
+    },
+    { displayModeBar: false, responsive: true },
+  );
+}
+
+function renderPresetCurve(points, metric) {
+  const yValues = points.map((point) => Math.abs(metric.accessor(point)) / (state.curveMetric === "hedge_ratio" ? 1 : 1_000_000));
+  const xValues = points.map((point) => point.liability);
+  const markerColors = points.map((point) => (point.liquidity_binding ? "#e8ae52" : "#5bc6c4"));
+  const zoneShapes = buildZoneShapes(yValues);
+
+  window.Plotly.react(
+    refs.plots.step3,
+    [
+      {
+        x: xValues,
+        y: yValues,
+        type: "scatter",
+        mode: "lines+markers",
+        name: metric.label,
+        line: { color: "#5bc6c4", width: 3 },
+        marker: { size: 9, color: markerColors, line: { width: 1, color: "#0a0e1a" } },
+        hovertemplate:
+          "Liability: %{x:.0f}M<br>" +
+          `${metric.label}: %{y:${state.curveMetric === "hedge_ratio" ? ".1f" : ".1f"}}${state.curveMetric === "hedge_ratio" ? "%" : "M"}<br>` +
+          "Optimal hedge: %{customdata:.0%}<extra></extra>",
+        customdata: points.map((point) => point.hedge_ratio),
+      },
+    ],
+    {
+      ...baseLayout("Liquidity-Constrained Risk Transfer Curve", "Sportsbook liability (USD, millions)", state.curveMetric === "hedge_ratio" ? "Optimal hedge ratio (%)" : `${metric.label} (USD, millions)`),
+      shapes: zoneShapes,
+      annotations: [
+        zoneLabel("Meaningful hedging", 0.16),
+        zoneLabel("Partial hedging", 0.5),
+        zoneLabel("No effective hedging", 0.84),
+      ],
+      yaxis: {
+        title: state.curveMetric === "hedge_ratio" ? "Optimal hedge ratio (%)" : `${metric.label} (USD, millions)`,
+        tickformat: state.curveMetric === "hedge_ratio" ? ",.0f" : ",.1f",
+        gridcolor: "rgba(156, 171, 205, 0.1)",
+        zeroline: false,
+      },
+      xaxis: {
+        title: "Sportsbook liability (USD, millions)",
+        tickformat: ",.0f",
+        gridcolor: "rgba(156, 171, 205, 0.08)",
+        zeroline: false,
+      },
+    },
+    { displayModeBar: false, responsive: true },
+  );
+}
+
 function baseLayout(title, xTitle, yTitle) {
   return {
     title: { text: title, font: { family: "DM Serif Display, serif", size: 24, color: "#edf2ff" } },
@@ -658,6 +843,11 @@ function formatCurrency(value) {
     maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
   });
   return formatter.format(value);
+}
+
+function formatCurrencyMillions(value) {
+  const sign = value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(value).toFixed(1)}M`;
 }
 
 function debounce(fn, waitMs) {
