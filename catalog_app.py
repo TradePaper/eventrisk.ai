@@ -53,7 +53,7 @@ DB_PATH = "tmp/contracts.db"
 
 app = FastAPI(title="ProbEdge Research")
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
-DEFAULT_PAPER_URL = "https://eventrisk.ai/paper"
+DEFAULT_PAPER_URL = ""
 PAPER_URL_ENV_KEY = "PAPER_URL"
 _ALLOWED_CORS_ORIGINS = [
     "https://eventrisk.ai",
