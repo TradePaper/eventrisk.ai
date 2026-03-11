@@ -150,6 +150,8 @@ class TestRedesignRoutes:
         text = client.get("/static/scripts/explainer.js").text
         assert 'const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debugApi") === "1";' in text
         assert 'console.info("[explainer] resolved API base:", client.baseUrl);' in text
+        assert 'const EXPLAINER_FALLBACK_PRESET = "/lib/presets/superbowl.json";' in text
+        assert "await hydrateStaticFallback();" in text
         assert 'await hydrateStrategyViews(strategy, { forceRefresh: true });' in text
         assert "if (!updateCurveCardFromCache()) {" in text
         assert 'void hydrateStrategyViews(state.strategy, { forceRefresh: true });' in text
@@ -160,6 +162,10 @@ class TestRedesignRoutes:
         assert 'seed: "superbowl_v1"' in text
         assert 'refs.deck.scrollTo({ top: refs.steps[nextIndex].offsetTop, behavior: "smooth" });' in text
         assert "const deckMidpoint = deckRect.top + deckRect.height / 2;" in text
+        assert 'const response = await fetch(EXPLAINER_FALLBACK_PRESET, { cache: "force-cache" });' in text
+        assert "renderStaticStep1(preset);" in text
+        assert "renderStaticStep2(preset);" in text
+        assert "renderStaticStep3(preset);" in text
 
     def test_explainer_step_scroller_css_avoids_chrome_height_traps(self):
         css = client.get("/static/styles/eventrisk.css").text
