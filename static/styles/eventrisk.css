@@ -537,6 +537,53 @@ code {
   min-height: 360px;
 }
 
+.mechanism-diagram {
+  min-height: 360px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 1rem;
+  padding: 1.2rem;
+}
+
+.mechanism-node {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem;
+  min-height: 180px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(18, 27, 49, 0.94), rgba(10, 14, 26, 0.92));
+}
+
+.mechanism-node-accent {
+  background: linear-gradient(180deg, rgba(91, 198, 196, 0.16), rgba(18, 27, 49, 0.92));
+}
+
+.mechanism-label {
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+}
+
+.mechanism-node strong {
+  color: var(--ink);
+  font-size: 1.15rem;
+  line-height: 1.3;
+}
+
+.mechanism-node small {
+  color: var(--ink-soft);
+  line-height: 1.6;
+}
+
+.mechanism-arrow {
+  color: var(--amber);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  line-height: 1;
+}
+
 .figure-callout {
   margin: 0;
   padding-left: 1rem;
@@ -698,6 +745,15 @@ code {
 
   .paper-summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .mechanism-diagram {
+    grid-template-columns: 1fr;
+  }
+
+  .mechanism-arrow {
+    justify-self: center;
+    transform: rotate(90deg);
   }
 
   .hero-copy h1 {

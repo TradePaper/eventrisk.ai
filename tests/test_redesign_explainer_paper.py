@@ -66,24 +66,30 @@ class TestRedesignRoutes:
         assert resp.status_code == 200
         text = resp.text
 
-        assert "Figure 1 — Unhedged Liability Distribution" in text
-        assert "Figure 2 — Hedged vs Unhedged Distribution Overlay" in text
-        assert "Figure 3 — Liquidity-Constrained Risk Transfer Curve" in text
-        assert "Figure 4 — Hedging Efficiency Frontier" in text
-        assert "Figure 5 — Hedging Feasibility Map" in text
-        assert "Figure 5 — Sportsbook Hedging Feasibility Map" not in text
-        assert "Figure 6 — Preset Stress-Test Snapshot" in text
+        expected_titles = [
+            "Figure 0: Event Market Risk Transfer Mechanism",
+            "Figure 1: Sportsbook Hedging Feasibility Map",
+            "Figure 2: Liquidity-Constrained Risk Transfer Curve",
+            "Figure 3: Sportsbook Risk Profile Under Hedging",
+            "Figure 4: Tail-Risk Compression",
+            "Figure 5: Hedging Efficiency Frontier",
+        ]
+        positions = [text.index(title) for title in expected_titles]
+        assert positions == sorted(positions)
+        assert "Figure 6" not in text
 
     def test_paper_route_uses_chart_rendering_script_not_text_only_cards(self):
         html = client.get("/paper").text
         js = client.get("/static/scripts/paper.js").text
         assert "/runtime-config.js" in html
         assert "https://cdn.plot.ly/plotly-2.35.2.min.js" in html
+        assert "renderFigure0" in js
+        assert 'class="mechanism-diagram"' in js
         assert "window.Plotly.react(" in js
         assert 'id="paperFigure${index + 1}"' in js
         assert "renderFigure5" in js
         assert "figure-notes" not in js
-        assert js.count("window.Plotly.react(") == 6
+        assert js.count("window.Plotly.react(") == 5
         assert 'const PRESETS = {' in js
         assert 'document.addEventListener("DOMContentLoaded", bootPaper, { once: true });' in js
         assert 'typeof window.Plotly?.react !== "function"' in js
@@ -95,6 +101,7 @@ class TestRedesignRoutes:
         text = resp.text
         assert "https://cdn.plot.ly/plotly-2.35.2.min.js" in text
         assert 'id="figureList"' in text
+        assert "Figure 0: Event Market Risk Transfer Mechanism" in text
         assert "/static/scripts/paper.js" in text
         assert text.index('/runtime-config.js" defer') < text.index('plotly-2.35.2.min.js" defer') < text.index('/static/scripts/paper.js" defer')
 

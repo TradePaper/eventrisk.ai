@@ -1,10 +1,10 @@
 const FIGURE_TITLES = [
-  "Figure 1 — Unhedged Liability Distribution",
-  "Figure 2 — Hedged vs Unhedged Distribution Overlay",
-  "Figure 3 — Liquidity-Constrained Risk Transfer Curve",
-  "Figure 4 — Hedging Efficiency Frontier",
-  "Figure 5 — Hedging Feasibility Map",
-  "Figure 6 — Preset Stress-Test Snapshot"
+  "Figure 0: Event Market Risk Transfer Mechanism",
+  "Figure 1: Sportsbook Hedging Feasibility Map",
+  "Figure 2: Liquidity-Constrained Risk Transfer Curve",
+  "Figure 3: Sportsbook Risk Profile Under Hedging",
+  "Figure 4: Tail-Risk Compression",
+  "Figure 5: Hedging Efficiency Frontier"
 ];
 
 const PRESETS = {
@@ -22,12 +22,12 @@ let activePreset = "superbowl";
 let currentObserver = null;
 
 const FIGURE_DESCRIPTIONS = [
-  "Full liability-outcome profile before hedge placement.",
-  "Overlay view shows left-tail compression after hedge execution.",
-  "Risk-transfer curve under finite liquidity and feasibility zoning.",
-  "Efficiency frontier emphasizing EV sacrificed versus tail-risk reduction.",
-  "Feasibility map grouped into red/yellow/green operating zones.",
-  "Cross-preset static snapshot for scenario comparison.",
+  "Mechanism view of how sportsbook exposure interacts with event-market depth and residual downside.",
+  "Canonical feasibility zoning for sportsbook hedge capacity under preset liquidity constraints.",
+  "Transfer curve showing how hedging effectiveness changes as liability scales through finite depth.",
+  "Static risk-profile comparison for the preset before and after hedging.",
+  "Distribution overlay focused on left-tail compression under the active preset.",
+  "Efficiency frontier showing EV traded for tail-risk reduction across hedge ratios.",
 ];
 
 const PLOT_CONFIG = { displayModeBar: false, responsive: true };
@@ -60,7 +60,7 @@ function cardMarkup(index, title, description, summaryLabel) {
 
 function buildCards(data) {
   listEl.innerHTML = FIGURE_TITLES.map((title, index) =>
-    cardMarkup(index, title, FIGURE_DESCRIPTIONS[index], `Figure ${index + 1} summary`)
+    cardMarkup(index, title, FIGURE_DESCRIPTIONS[index], `${title} summary`)
   ).join("");
 
   const cardsEls = Array.from(document.querySelectorAll(".figure-card"));
@@ -80,12 +80,12 @@ function buildCards(data) {
 }
 
 function renderFigures(data) {
+  renderFigure0(data);
   renderFigure1(data);
   renderFigure2(data);
   renderFigure3(data);
   renderFigure4(data);
   renderFigure5(data);
-  renderFigure6(data);
 }
 
 async function loadPreset(presetKey) {
@@ -122,84 +122,82 @@ if (document.readyState === "loading") {
   bootPaper();
 }
 
-function renderFigure1(data) {
+function renderFigure0(data) {
   const plotEl = document.getElementById("paperFigure1");
-  const bins = data.step1.bins;
-  const density = data.step1.unhedged_density;
+  const lastPoint = data.step3.points[data.step3.points.length - 1];
+  // FLAG: the bundled preset data does not include the paper's original Figure 0 graphic,
+  // so this renders a qualitative mechanism diagram using only shipped preset metadata.
+  plotEl.innerHTML = `
+    <div class="mechanism-diagram" role="img" aria-label="${FIGURE_TITLES[0]}">
+      <div class="mechanism-node">
+        <span class="mechanism-label">Sportsbook book</span>
+        <strong>${data.meta.event}</strong>
+        <small>${formatMillions(data.meta.stake_usd / 1_000_000)} gross liability</small>
+      </div>
+      <div class="mechanism-arrow" aria-hidden="true">→</div>
+      <div class="mechanism-node">
+        <span class="mechanism-label">Event-market depth</span>
+        <strong>${formatMillions(data.meta.liquidity_usd / 1_000_000)} available liquidity</strong>
+        <small>${Math.round(data.meta.target_hedge_ratio * 100)}% target hedge ratio</small>
+      </div>
+      <div class="mechanism-arrow" aria-hidden="true">→</div>
+      <div class="mechanism-node mechanism-node-accent">
+        <span class="mechanism-label">Residual tail</span>
+        <strong>${formatUsdMillions(lastPoint.tail_risk_hedged_m)}</strong>
+        <small>${Math.round(lastPoint.hedge_utilization * 100)}% utilization at the largest liability point</small>
+      </div>
+    </div>
+  `;
+
+  setSummary(1, [
+    metric("Event market", data.meta.event, `Seed ${data.meta.seed}`),
+    metric("Book liability", formatMillions(data.meta.stake_usd / 1_000_000), `${formatCount(data.meta.simulation_count)} static simulations`),
+    metric("Depth available", formatMillions(data.meta.liquidity_usd / 1_000_000), `${Math.round(data.meta.target_hedge_ratio * 100)}% hedge target`),
+    metric("Residual tail", formatUsdMillions(lastPoint.tail_risk_hedged_m), `${Math.round(lastPoint.hedge_utilization * 100)}% utilization at scale`),
+  ]);
+  setCallout(1, "Figure 0 summarizes the mechanism: sportsbook downside is transferred into event-market liquidity until depth binds and residual tail risk remains on book.");
+}
+
+function renderFigure1(data) {
+  const plotEl = document.getElementById("paperFigure2");
+  const heatmap = buildFeasibilityHeatmap(data);
 
   window.Plotly.react(
     plotEl,
     [{
-      x: bins,
-      y: density,
-      type: "bar",
-      marker: { color: PAPER_COLORS.red, line: { width: 0 } },
-      hovertemplate: "Loss %{x}M<br>Density %{y:.2f}<extra></extra>",
-      name: "Unhedged",
+      x: heatmap.x,
+      y: heatmap.y,
+      z: heatmap.z,
+      type: "heatmap",
+      colorscale: [
+        [0, "rgba(208, 113, 117, 0.88)"],
+        [0.5, "rgba(232, 174, 82, 0.92)"],
+        [1, "rgba(98, 195, 157, 0.92)"],
+      ],
+      zmin: 0,
+      zmax: 2,
+      showscale: false,
+      hovertemplate: "Utilization %{y}%<br>Liability %{x}M<br>%{text}<extra></extra>",
+      text: heatmap.labels,
     }],
     {
-      ...baseLayout("Loss outcome (USD, millions)", "Probability density"),
-      bargap: 0.08,
-      showlegend: false,
-    },
-    PLOT_CONFIG,
-  );
-
-  setSummary(1, [
-    metric("Event", data.meta.event, `${formatMillions(data.meta.stake_usd / 1_000_000)} liability stake`),
-    metric("Expected value", formatUsdMillions(data.step1.ev_m), `CVaR-95 ${formatUsdMillions(data.step1.cvar95_m)}`),
-    metric("Max loss", formatUsdMillions(data.step1.max_loss_m), `${data.step1.bins.length} static bins`),
-    metric("Simulation count", formatCount(data.meta.simulation_count), `Seed ${data.meta.seed}`),
-  ]);
-  setCallout(1, "Figure 1 stays static-first: the preset distribution is rendered directly from the bundled paper dataset without any live API dependency.");
-}
-
-function renderFigure2(data) {
-  const plotEl = document.getElementById("paperFigure2");
-
-  window.Plotly.react(
-    plotEl,
-    [
-      {
-        x: data.step2.bins,
-        y: data.step2.unhedged_density,
-        type: "scatter",
-        mode: "lines",
-        name: "Unhedged",
-        line: { color: PAPER_COLORS.red, width: 3 },
-        fill: "tozeroy",
-        fillcolor: "rgba(208, 113, 117, 0.18)",
-        hovertemplate: "Unhedged %{x}M<br>Density %{y:.2f}<extra></extra>",
-      },
-      {
-        x: data.step2.bins,
-        y: data.step2.hedged_density,
-        type: "scatter",
-        mode: "lines",
-        name: "Hedged",
-        line: { color: PAPER_COLORS.teal, width: 3 },
-        fill: "tozeroy",
-        fillcolor: "rgba(91, 198, 196, 0.16)",
-        hovertemplate: "Hedged %{x}M<br>Density %{y:.2f}<extra></extra>",
-      },
-    ],
-    {
-      ...baseLayout("Loss outcome (USD, millions)", "Probability density"),
-      legend: legendLayout(),
+      ...baseLayout("Liability (USD, millions)", "Hedge utilization (%)"),
+      margin: { l: 64, r: 26, t: 26, b: 56 },
+      annotations: heatmap.annotations,
     },
     PLOT_CONFIG,
   );
 
   setSummary(2, [
-    metric("Tail reduction", `${data.step2.tail_reduction_pct.toFixed(1)}%`, "Shift in left-tail exposure"),
-    metric("Unhedged CVaR-95", formatUsdMillions(data.step2.cvar95_unhedged_m), `EV ${formatUsdMillions(data.step2.ev_unhedged_m)}`),
-    metric("Hedged CVaR-95", formatUsdMillions(data.step2.cvar95_hedged_m), `EV ${formatUsdMillions(data.step2.ev_hedged_m)}`),
-    metric("Target hedge", `${Math.round(data.meta.target_hedge_ratio * 100)}%`, `${formatMillions(data.meta.liquidity_usd / 1_000_000)} liquidity`),
+    metric("Meaningful cells", String(heatmap.counts.green), "Green-zone feasibility"),
+    metric("Partial cells", String(heatmap.counts.yellow), "Yellow-zone feasibility"),
+    metric("Constrained cells", String(heatmap.counts.red), "Red-zone feasibility"),
+    metric("Thresholds", `${Math.round(data.step3.zones.green_max_utilization * 100)}% / ${Math.round(data.step3.zones.yellow_max_utilization * 100)}%`, "Green / yellow cutoffs"),
   ]);
-  setCallout(2, "Figure 2 overlays the bundled hedged and unhedged densities so the narrative paper view shows left-tail compression immediately after preset selection.");
+  setCallout(2, "Figure 1 uses the bundled liability ladder and utilization cutoffs to show where sportsbook hedging remains meaningful, partial, or fully constrained.");
 }
 
-function renderFigure3(data) {
+function renderFigure2(data) {
   const plotEl = document.getElementById("paperFigure3");
   const points = data.step3.points;
 
@@ -257,11 +255,99 @@ function renderFigure3(data) {
     metric("Zone ceiling", `${Math.round(data.step3.zones.yellow_max_utilization * 100)}%`, "Upper partial-feasibility threshold"),
     metric("Max utilization", `${Math.round(points[points.length - 1].hedge_utilization * 100)}%`, "Final liability point"),
   ]);
-  setCallout(3, "Figure 3 remains policy-paper friendly: all lines come from preset JSON and expose both EWCL improvement and liquidity pressure without any runtime API request.");
+  setCallout(3, "Figure 2 keeps the canonical risk-transfer curve in static form so each preset shows how liability growth pushes the hedge toward liquidity bounds.");
+}
+
+function renderFigure3(data) {
+  const plotEl = document.getElementById("paperFigure4");
+  const profileRows = [
+    { label: "EV", unhedged: Math.abs(data.step2.ev_unhedged_m), hedged: Math.abs(data.step2.ev_hedged_m) },
+    { label: "CVaR-95", unhedged: Math.abs(data.step2.cvar95_unhedged_m), hedged: Math.abs(data.step2.cvar95_hedged_m) },
+    { label: "Tail gap", unhedged: Math.abs(data.step2.cvar95_unhedged_m - data.step2.ev_unhedged_m), hedged: Math.abs(data.step2.cvar95_hedged_m - data.step2.ev_hedged_m) },
+  ];
+
+  window.Plotly.react(
+    plotEl,
+    [
+      {
+        x: profileRows.map((row) => row.label),
+        y: profileRows.map((row) => row.unhedged),
+        type: "bar",
+        name: "Unhedged",
+        marker: { color: PAPER_COLORS.red },
+      },
+      {
+        x: profileRows.map((row) => row.label),
+        y: profileRows.map((row) => row.hedged),
+        type: "bar",
+        name: "Hedged",
+        marker: { color: PAPER_COLORS.teal },
+      },
+    ],
+    {
+      ...baseLayout("Risk metric", "Absolute value (USD, millions)"),
+      barmode: "group",
+      legend: legendLayout(),
+    },
+    PLOT_CONFIG,
+  );
+
+  setSummary(4, [
+    metric("Unhedged EV", formatUsdMillions(data.step2.ev_unhedged_m), "Pre-transfer expected value"),
+    metric("Hedged EV", formatUsdMillions(data.step2.ev_hedged_m), "Post-transfer expected value"),
+    metric("Unhedged CVaR-95", formatUsdMillions(data.step2.cvar95_unhedged_m), "Worst-case loss before hedge"),
+    metric("Hedged CVaR-95", formatUsdMillions(data.step2.cvar95_hedged_m), "Worst-case loss after hedge"),
+  ]);
+  setCallout(4, "Figure 3 compares the sportsbook risk profile before and after hedging using only the static preset EV and CVaR data already bundled with the paper flow.");
 }
 
 function renderFigure4(data) {
-  const plotEl = document.getElementById("paperFigure4");
+  const plotEl = document.getElementById("paperFigure5");
+
+  window.Plotly.react(
+    plotEl,
+    [
+      {
+        x: data.step2.bins,
+        y: data.step2.unhedged_density,
+        type: "scatter",
+        mode: "lines",
+        name: "Unhedged",
+        line: { color: PAPER_COLORS.red, width: 3 },
+        fill: "tozeroy",
+        fillcolor: "rgba(208, 113, 117, 0.18)",
+        hovertemplate: "Unhedged %{x}M<br>Density %{y:.2f}<extra></extra>",
+      },
+      {
+        x: data.step2.bins,
+        y: data.step2.hedged_density,
+        type: "scatter",
+        mode: "lines",
+        name: "Hedged",
+        line: { color: PAPER_COLORS.teal, width: 3 },
+        fill: "tozeroy",
+        fillcolor: "rgba(91, 198, 196, 0.16)",
+        hovertemplate: "Hedged %{x}M<br>Density %{y:.2f}<extra></extra>",
+      },
+    ],
+    {
+      ...baseLayout("Loss outcome (USD, millions)", "Probability density"),
+      legend: legendLayout(),
+    },
+    PLOT_CONFIG,
+  );
+
+  setSummary(5, [
+    metric("Tail reduction", `${data.step2.tail_reduction_pct.toFixed(1)}%`, "Shift in left-tail exposure"),
+    metric("Unhedged CVaR-95", formatUsdMillions(data.step2.cvar95_unhedged_m), `EV ${formatUsdMillions(data.step2.ev_unhedged_m)}`),
+    metric("Hedged CVaR-95", formatUsdMillions(data.step2.cvar95_hedged_m), `EV ${formatUsdMillions(data.step2.ev_hedged_m)}`),
+    metric("Target hedge", `${Math.round(data.meta.target_hedge_ratio * 100)}%`, `${formatMillions(data.meta.liquidity_usd / 1_000_000)} liquidity`),
+  ]);
+  setCallout(5, "Figure 4 overlays the bundled hedged and unhedged loss densities to show the exact left-tail compression created by the active preset hedge.");
+}
+
+function renderFigure5(data) {
+  const plotEl = document.getElementById("paperFigure6");
   const frontier = buildFrontierSeries(data);
   const shallowPeak = frontier.shallow[frontier.shallow.length - 1];
   const deepPeak = frontier.deep[frontier.deep.length - 1];
@@ -279,85 +365,13 @@ function renderFigure4(data) {
     PLOT_CONFIG,
   );
 
-  setSummary(4, [
+  setSummary(6, [
     metric("Shallow peak", formatUsdMillions(shallowPeak.tailReduction), "Higher slippage, lower depth"),
     metric("Deep peak", formatUsdMillions(deepPeak.tailReduction), "More transfer before saturation"),
     metric("Frontier sweep", `${frontier.shallow.length} ratios`, "0% to 100% hedge ratio"),
     metric("Base penalty", formatUsdMillions(Math.abs(data.step2.ev_hedged_m - data.step2.ev_unhedged_m)), "Used for static EV-cost scaling"),
   ]);
-  setCallout(4, "Figure 4 is derived from the preset’s static loss and liquidity profile to show the shallow/deep tradeoff shape without adding any new backend frontier endpoint.");
-}
-
-function renderFigure5(data) {
-  const plotEl = document.getElementById("paperFigure5");
-  const heatmap = buildFeasibilityHeatmap(data);
-
-  window.Plotly.react(
-    plotEl,
-    [{
-      x: heatmap.x,
-      y: heatmap.y,
-      z: heatmap.z,
-      type: "heatmap",
-      colorscale: [
-        [0, "rgba(208, 113, 117, 0.88)"],
-        [0.5, "rgba(232, 174, 82, 0.92)"],
-        [1, "rgba(98, 195, 157, 0.92)"],
-      ],
-      zmin: 0,
-      zmax: 2,
-      showscale: false,
-      hovertemplate: "Utilization %{y}%<br>Liability %{x}M<br>%{text}<extra></extra>",
-      text: heatmap.labels,
-    }],
-    {
-      ...baseLayout("Liability (USD, millions)", "Hedge utilization (%)"),
-      margin: { l: 64, r: 26, t: 26, b: 56 },
-      annotations: heatmap.annotations,
-    },
-    PLOT_CONFIG,
-  );
-
-  setSummary(5, [
-    metric("Meaningful cells", String(heatmap.counts.green), "Green-zone feasibility"),
-    metric("Partial cells", String(heatmap.counts.yellow), "Yellow-zone feasibility"),
-    metric("Constrained cells", String(heatmap.counts.red), "Red-zone feasibility"),
-    metric("Thresholds", `${Math.round(data.step3.zones.green_max_utilization * 100)}% / ${Math.round(data.step3.zones.yellow_max_utilization * 100)}%`, "Green / yellow cutoffs"),
-  ]);
-  setCallout(5, "Figure 5 — Hedging Feasibility Map uses the same preset liability ladder plus utilization cutoffs to render a true visual heatmap instead of a text-only zone summary.");
-}
-
-function renderFigure6(data) {
-  const plotEl = document.getElementById("paperFigure6");
-  const snapshot = buildSnapshotSeries(data);
-
-  window.Plotly.react(
-    plotEl,
-    [{
-      x: snapshot.labels,
-      y: snapshot.values,
-      type: "bar",
-      marker: {
-        color: [PAPER_COLORS.teal, PAPER_COLORS.amber, PAPER_COLORS.red, PAPER_COLORS.inkSoft],
-      },
-      hovertemplate: "%{x}<br>%{y:.1f}<extra></extra>",
-      showlegend: false,
-    }],
-    {
-      ...baseLayout("Scenario attributes", "Normalized snapshot score"),
-      showlegend: false,
-      yaxis: { ...baseAxis("Normalized snapshot score"), range: [0, 100] },
-    },
-    PLOT_CONFIG,
-  );
-
-  setSummary(6, [
-    metric("Scenario tag", data.id, data.name),
-    metric("Stake", formatMillions(data.meta.stake_usd / 1_000_000), `${data.meta.event}`),
-    metric("Market price", data.meta.market_price.toFixed(2), `True probability ${data.meta.true_probability.toFixed(2)}`),
-    metric("Liquidity", formatMillions(data.meta.liquidity_usd / 1_000_000), `Hedge target ${Math.round(data.meta.target_hedge_ratio * 100)}%`),
-  ]);
-  setCallout(6, "Figure 6 turns the active preset into a compact snapshot chart so scenario switching updates a visible paper-ready summary rather than a static note block.");
+  setCallout(6, "Figure 5 preserves the existing static frontier construction so the paper view still shows the EV-versus-tail tradeoff without any new backend contract.");
 }
 
 function frontierTrace(rows, name, color) {
