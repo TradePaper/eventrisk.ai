@@ -1,6 +1,6 @@
 /**
  * tests/test_simulator_state.mjs
- * Tests simulator state contracts: PAPER_DEFAULTS, URL-param keys,
+ * Tests simulator state contracts: preset UI, URL-param handling,
  * reproducibility panel fields, n_paths cap, and preset schema integrity.
  * Run with: node tests/test_simulator_state.mjs
  */
@@ -50,25 +50,20 @@ function suite(name, fn) {
 
 const suites = [
 
-  suite("event-markets.html — PAPER_DEFAULTS values", async () => {
+  suite("event-markets.html — superbowl_v1 preset UI", async () => {
     const { body: html } = await get("/event-markets");
-    assert(html.includes("PAPER_DEFAULTS"),             "PAPER_DEFAULTS defined");
-    assert(html.includes("liability: 100000000"),        "liability default = 100M");
-    assert(html.includes("liquidity: 20000000"),         "liquidity default = 20M");
-    assert(html.includes("true_probability: 0.55"),      "true_probability default = 0.55");
-    assert(html.includes("market_price: 0.52"),          "market_price default = 0.52");
-    assert(html.includes("target_hedge_ratio: 0.60"),    "target_hedge_ratio default = 0.60");
-    assert(html.includes("simulation_count: 10000"),     "simulation_count default = 10000");
+    assert(html.includes("superbowl_v1"),                   "superbowl_v1 preset key present");
+    assert(html.includes("?scenario=superbowl_v1"),         "?scenario= URL pattern present");
+    assert(html.includes("loadPreset"),                     "loadPreset function present");
+    assert(html.includes("PRESETS"),                        "PRESETS object defined");
+    assert(html.includes("Load Super Bowl Preset"),         "Super Bowl preset button label present");
   }),
 
-  suite("event-markets.html — URL query-param serialization keys", async () => {
+  suite("event-markets.html — scenario URL param handling", async () => {
     const { body: html } = await get("/event-markets");
-    assert(html.includes('q.get("liability")'),  'reads ?liability from URL');
-    assert(html.includes('q.get("liquidity")'),  'reads ?liquidity from URL');
-    assert(html.includes('q.get("p")'),          'reads ?p (true_probability) from URL');
-    assert(html.includes('q.get("price")'),      'reads ?price (market_price) from URL');
-    assert(html.includes('q.get("hedge")'),      'reads ?hedge (target_hedge_ratio) from URL');
-    assert(html.includes('q.get("n")'),          'reads ?n (simulation_count) from URL');
+    assert(html.includes("URLSearchParams"),                "URLSearchParams used");
+    assert(html.includes("qs.get('scenario')"),             "reads ?scenario from URL");
+    assert(html.includes("location.search"),                "reads location.search");
   }),
 
   suite("event-markets.html — reproducibility panel elements", async () => {
@@ -80,12 +75,12 @@ const suites = [
     assert(html.includes("Executed n_paths"),    "Label 'Executed n_paths' visible in panel");
   }),
 
-  suite("event-markets.html — Paper Mode and superbowl_v1 preset", async () => {
+  suite("event-markets.html — superbowl_v1 preset interaction", async () => {
     const { body: html } = await get("/event-markets");
-    assert(html.includes("Paper"),               "Paper label present");
-    assert(html.includes("Explore"),             "Explore button present");
-    assert(html.includes("superbowl_v1"),        "superbowl_v1 seed/preset referenced");
-    assert(html.includes("loadPreset"),          "loadPreset function referenced");
+    assert(html.includes("superbowl_v1"),                        "superbowl_v1 seed/preset referenced");
+    assert(html.includes("loadPreset"),                          "loadPreset function referenced");
+    assert(html.includes("Super Bowl"),                          "Super Bowl label present");
+    assert(html.includes("scenario_metadata"),                   "scenario_metadata key referenced in JS");
   }),
 
   suite("n_paths cap — requested_n_paths vs n_paths in API response", async () => {
@@ -160,22 +155,17 @@ const suites = [
     }
   }),
 
-  suite("Superbowl preset meta matches PAPER_DEFAULTS", async () => {
+  suite("Superbowl preset JSON is served and matches seed in page", async () => {
     const preset = JSON.parse(readFileSync("lib/presets/superbowl.json", "utf8"));
     const { body: html } = await get("/event-markets");
+    const { status, body: json } = await get("/lib/presets/superbowl.json");
 
-    assert(
-      html.includes(`true_probability: ${preset.meta.true_probability}`),
-      `PAPER_DEFAULTS.true_probability matches preset (${preset.meta.true_probability})`
-    );
-    assert(
-      html.includes(`market_price: ${preset.meta.market_price}`),
-      `PAPER_DEFAULTS.market_price matches preset (${preset.meta.market_price})`
-    );
-    assert(
-      html.includes(`target_hedge_ratio: ${preset.meta.target_hedge_ratio.toFixed(2)}`),
-      `PAPER_DEFAULTS.target_hedge_ratio matches preset (${preset.meta.target_hedge_ratio})`
-    );
+    assert(status === 200,                            "superbowl.json served at /lib/presets/");
+    assert(json.meta.seed === "superbowl_v1",         `preset seed = superbowl_v1`);
+    assert(html.includes(preset.meta.seed),           `page references seed '${preset.meta.seed}'`);
+    assert(preset.meta.true_probability === 0.55,     "preset true_probability = 0.55");
+    assert(preset.meta.market_price === 0.52,         "preset market_price = 0.52");
+    assert(preset.meta.target_hedge_ratio === 0.60,   "preset target_hedge_ratio = 0.60");
   }),
 
   suite("v3 endpoint — liquidity_cap and collapse_flags state", async () => {
