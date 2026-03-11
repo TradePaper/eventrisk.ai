@@ -125,7 +125,9 @@ function bindEvents() {
 
   refs.metricSelect.addEventListener("change", () => {
     state.curveMetric = refs.metricSelect.value;
-    updateCurveCardFromCache();
+    if (!updateCurveCardFromCache()) {
+      void hydrateStrategyViews(state.strategy, { forceRefresh: true });
+    }
   });
 
   refs.stepDots.forEach((button) => {
@@ -145,7 +147,7 @@ function bindEvents() {
       state.strategy = strategy;
       updateControlUi();
       resetStepTwoThreeMetrics();
-      await hydrateStrategyViews(strategy);
+      await hydrateStrategyViews(strategy, { forceRefresh: true });
     });
   });
 
@@ -180,7 +182,7 @@ async function hydrateExplainer() {
   setStepState("step2", "loading");
   setStepState("step3", "loading");
 
-  await Promise.all([hydrateBaseline(), hydrateStrategyViews(state.strategy)]);
+  await Promise.all([hydrateBaseline(), hydrateStrategyViews(state.strategy, { forceRefresh: true })]);
   updateControlUi();
 }
 
@@ -203,9 +205,18 @@ async function hydrateBaseline() {
   }
 }
 
-async function hydrateStrategyViews(strategy) {
-  const step2Key = `step2:${strategy}`;
-  const step3Key = `step3:${strategy}`;
+function getStep2CacheKey(strategy) {
+  return `step2:${strategy}:${CURVE_PAYLOAD.seed}:${BASE_DISTRIBUTION_INPUT.liability}`;
+}
+
+function getStep3CacheKey(strategy) {
+  return `step3:${strategy}:${CURVE_PAYLOAD.seed}:${CURVE_PAYLOAD.liability_min}:${CURVE_PAYLOAD.liability_max}:${CURVE_PAYLOAD.n_points}`;
+}
+
+async function hydrateStrategyViews(strategy, options = {}) {
+  const forceRefresh = Boolean(options.forceRefresh);
+  const step2Key = getStep2CacheKey(strategy);
+  const step3Key = getStep3CacheKey(strategy);
   const hasStep2Cache = state.cache.has(step2Key);
   const hasStep3Cache = state.cache.has(step3Key);
 
@@ -222,8 +233,8 @@ async function hydrateStrategyViews(strategy) {
   }
 
   const [step2Result, step3Result] = await Promise.allSettled([
-    hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy),
-    hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy),
+    !forceRefresh && hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy),
+    !forceRefresh && hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy),
   ]);
 
   if (step2Result.status === "fulfilled") {
@@ -231,9 +242,11 @@ async function hydrateStrategyViews(strategy) {
     if (strategy === state.strategy) {
       renderStep2(step2Result.value);
     }
-  } else if (!hasStep2Cache && strategy === state.strategy) {
+  } else if (strategy === state.strategy) {
     console.error(step2Result.reason);
-    setStepState("step2", "error");
+    if (!hasStep2Cache) {
+      setStepState("step2", "error");
+    }
   }
 
   if (step3Result.status === "fulfilled") {
@@ -241,9 +254,11 @@ async function hydrateStrategyViews(strategy) {
     if (strategy === state.strategy) {
       renderStep3(step3Result.value);
     }
-  } else if (!hasStep3Cache && strategy === state.strategy) {
+  } else if (strategy === state.strategy) {
     console.error(step3Result.reason);
-    setStepState("step3", "error");
+    if (!hasStep3Cache) {
+      setStepState("step3", "error");
+    }
   }
 }
 
@@ -499,16 +514,18 @@ function baseLayout(title, xTitle, yTitle) {
 }
 
 function updateCurveCardFromCache() {
-  const data = state.cache.get(`step3:${state.strategy}`);
+  const data = state.cache.get(getStep3CacheKey(state.strategy));
   if (data) {
     renderStep3(data);
+    return true;
   }
+  return false;
 }
 
 function updateAllChartsFromCache() {
   const baseline = state.cache.get("step1:baseline");
-  const step2 = state.cache.get(`step2:${state.strategy}`);
-  const step3 = state.cache.get(`step3:${state.strategy}`);
+  const step2 = state.cache.get(getStep2CacheKey(state.strategy));
+  const step3 = state.cache.get(getStep3CacheKey(state.strategy));
 
   if (baseline) renderStep1(baseline);
   if (step2) renderStep2(step2);
