@@ -6,9 +6,9 @@ from catalog_app import app
 
 
 client = TestClient(app)
-PAPER_LINK_PATTERN = re.compile(r'<a[^>]*href="([^"]+)"[^>]*>(Read the paper|Open Paper|Paper link)</a>')
+PAPER_LINK_PATTERN = re.compile(r'<a[^>]*href="([^"]+)"[^>]*>(Read the Paper|Open Paper|Paper link)</a>')
 SECURE_LINK_PATTERN = re.compile(
-    r'<a[^>]*href="([^"]+)"[^>]*target="_blank"[^>]*rel="noopener noreferrer"[^>]*>(Read the paper|Open Paper|Paper link)</a>'
+    r'<a[^>]*href="([^"]+)"[^>]*target="_blank"[^>]*rel="noopener noreferrer"[^>]*>(Read the Paper|Open Paper|Paper link)</a>'
 )
 
 
@@ -39,10 +39,12 @@ class TestRedesignRoutes:
         text = resp.text
 
         assert "EventRisk" in text
-        assert "Explainer" in text
-        assert "Paper Figures" in text
+        assert "The Mechanism" in text
+        assert "The Analysis" in text
         assert "Stress Test" in text
-        assert "Read the paper" in text
+        assert "Read the Paper" in text
+        assert "Three figures" not in text
+        assert "Six figures" in text
         assert "External Hedge" in text
         assert "Internal Reprice" in text
         assert "Hybrid" in text
@@ -107,7 +109,7 @@ class TestRedesignRoutes:
     def test_shared_nav_asset_uses_redesign_destinations(self):
         text = client.get("/static/nav.js").text
         assert "EventRisk" in text
-        assert "Read the paper" in text
+        assert "Read the Paper" in text
         assert 'href="/explainer"' in text
         assert 'href="/paper"' in text
         assert 'href="/simulator"' in text
@@ -135,7 +137,7 @@ class TestRedesignRoutes:
         expected = "https://eventrisk.ai/paper.pdf"
         for route in ("/explainer", "/paper", "/simulator"):
             text = client.get(route).text
-            assert "Read the paper" in text
+            assert "Read the Paper" in text
             assert 'href=""' not in text
             links = PAPER_LINK_PATTERN.findall(text)
             assert links

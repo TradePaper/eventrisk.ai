@@ -95,12 +95,12 @@ def _paper_link(paper_url: str, label: str, *, class_name: str = "", element_id:
 
 def _paper_link_tokens(paper_url: str) -> dict[str, str]:
     return {
-        "__PAPER_LINK_EXPLAINER_NAV__": _paper_link(paper_url, "Read the paper", class_name="nav-link paper-out"),
+        "__PAPER_LINK_EXPLAINER_NAV__": _paper_link(paper_url, "Read the Paper", class_name="nav-link paper-out"),
         "__PAPER_LINK_EXPLAINER_CTA__": _paper_link(paper_url, "Open Paper", class_name="cta-link secondary", element_id="ctaPaper"),
         "__PAPER_LINK_EXPLAINER_FOOTER__": _paper_link(paper_url, "Paper link"),
-        "__PAPER_LINK_PAPER_NAV__": _paper_link(paper_url, "Read the paper", class_name="nav-link paper-out"),
+        "__PAPER_LINK_PAPER_NAV__": _paper_link(paper_url, "Read the Paper", class_name="nav-link paper-out"),
         "__PAPER_LINK_PAPER_FOOTER__": _paper_link(paper_url, "Paper link"),
-        "__PAPER_LINK_SIMULATOR_NAV__": _paper_link(paper_url, "Read the paper"),
+        "__PAPER_LINK_SIMULATOR_NAV__": _paper_link(paper_url, "Read the Paper"),
     }
 
 
