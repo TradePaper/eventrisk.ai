@@ -209,7 +209,7 @@ function renderDistribution(data) {
         marker: { color: "#126b52", opacity: 0.68 },
       },
     ],
-    baseLayout("Sportsbook Loss Distribution", "P&L outcome", "Path count"),
+    baseLayout("P&L outcome", "Path count"),
     { displayModeBar: false, responsive: true },
   );
 }
@@ -246,7 +246,7 @@ function renderCurve(data) {
       },
     ],
     {
-      ...baseLayout("Liquidity-Constrained Risk Transfer Curve", "Liability", "EWCL"),
+      ...baseLayout("Liability", "EWCL"),
       yaxis2: {
         title: "Optimal Hedge %",
         overlaying: "y",
@@ -270,7 +270,7 @@ function renderFrontier(data) {
       frontierTrace(data.frontiers.shallow, "Shallow Market", "#b65a35"),
       frontierTrace(data.frontiers.deep, "Deep Market", "#0f6b5e"),
     ],
-    baseLayout("Hedging Efficiency Frontier", "EV Sacrificed", "Tail Reduction"),
+    baseLayout("EV Sacrificed", "Tail Reduction"),
     { displayModeBar: false, responsive: true },
   );
 }
@@ -293,13 +293,11 @@ function frontierTrace(rows, name, color) {
 }
 
 /**
- * @param {string} title
  * @param {string} xTitle
  * @param {string} yTitle
  */
-function baseLayout(title, xTitle, yTitle) {
+function baseLayout(xTitle, yTitle) {
   return {
-    title: { text: title, x: 0.02, xanchor: "left", font: { size: 18, family: "IBM Plex Sans, sans-serif" } },
     paper_bgcolor: "rgba(255,255,255,0)",
     plot_bgcolor: "#f8f5ef",
     margin: { l: 56, r: 36, t: 56, b: 48 },
