@@ -87,6 +87,9 @@ class TestRedesignRoutes:
         assert 'href="/explainer"' in text
         assert 'href="/paper"' in text
         assert 'href="/simulator"' in text
+        assert "window.__RUNTIME_CONFIG__" in text
+        assert 'target="_blank"' in text
+        assert 'rel="noopener noreferrer"' in text
         assert "Event Markets Intelligence" not in text
         assert "Sportsbook Hedge Simulator" not in text
 

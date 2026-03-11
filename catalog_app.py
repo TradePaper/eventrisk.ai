@@ -57,8 +57,11 @@ DEFAULT_PAPER_URL = "https://eventrisk.ai/paper"
 PAPER_URL_ENV_KEY = "PAPER_URL"
 _ALLOWED_CORS_ORIGINS = [
     "https://eventrisk.ai",
+    "https://www.eventrisk.ai",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:5000",
     "http://127.0.0.1:5000",
 ]

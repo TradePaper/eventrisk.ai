@@ -83,6 +83,24 @@ class TestSimulatorRuntimeRoute:
         assert resp.status_code == 200
         assert resp.headers["access-control-allow-origin"] == "http://127.0.0.1:3000"
 
+    def test_status_allows_www_eventrisk_origin(self):
+        resp = client.get("/status", headers={"Origin": "https://www.eventrisk.ai"})
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "https://www.eventrisk.ai"
+
+    def test_distribution_preflight_allows_local_vite_origin(self):
+        resp = client.options(
+            "/api/risk-transfer/distribution",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers["access-control-allow-origin"] == "http://localhost:5173"
+        assert "POST" in resp.headers["access-control-allow-methods"]
+
     def test_simulator_page_contains_live_controls_and_chart_shells(self):
         resp = client.get("/simulator")
         assert resp.status_code == 200
@@ -128,6 +146,12 @@ class TestSimulatorRuntimeRoute:
             assert resp.status_code == 200
             assert resp.headers["content-type"].startswith(content_type)
 
+    def test_legacy_nav_pages_load_runtime_config_before_nav(self):
+        for route in ("/event-markets", "/hedging-simulator", "/probability-gap", "/backtest", "/reports"):
+            text = client.get(route).text
+            assert "/runtime-config.js" in text
+            assert "/static/nav.js" in text
+
     def test_simulator_state_url_serialization_keys_are_stable(self):
         text = client.get("/static/scripts/simulator-state.mjs").text
         assert 'params.get("v")' in text
@@ -145,6 +169,10 @@ class TestSimulatorRuntimeRoute:
         assert "const query = serializeSimulatorState(state);" in text
         assert 'window.history.replaceState({}, "", `/simulator?${query}`);' in text
         assert "const shareUrl = `${window.location.origin}/simulator?${serializeSimulatorState(state)}`;" in text
+
+    def test_api_client_accepts_runtime_config_key_emitted_by_server(self):
+        text = client.get("/static/scripts/api-client.mjs").text
+        assert "window.__RUNTIME_CONFIG__" in text
 
     def test_simulator_run_contract_endpoints_return_chart_data(self):
         distribution = client.post(
