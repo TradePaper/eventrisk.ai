@@ -53,7 +53,7 @@ DB_PATH = "tmp/contracts.db"
 
 app = FastAPI(title="ProbEdge Research")
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
-DEFAULT_PAPER_URL = ""
+DEFAULT_PAPER_URL = "https://eventrisk.ai/paper"
 DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app"
 PAPER_URL_ENV_KEY = "PAPER_URL"
 _ALLOWED_CORS_ORIGINS = [
@@ -79,7 +79,7 @@ def _get_paper_url() -> str:
     configured = os.environ.get(PAPER_URL_ENV_KEY)
     if configured is None:
         return DEFAULT_PAPER_URL
-    return configured.strip()
+    return configured.strip() or DEFAULT_PAPER_URL
 
 
 def _paper_link(paper_url: str, label: str, *, class_name: str = "", element_id: str = "") -> str:
