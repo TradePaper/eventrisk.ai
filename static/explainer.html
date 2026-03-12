@@ -33,16 +33,16 @@
             <p class="eyebrow">Event contracts under liquidity constraints</p>
             <h1>Six figures for how hedge capacity changes as market depth tightens.</h1>
             <p class="hero-lede">
-              This explainer uses the live Monte Carlo engine with the deterministic
-              <code>superbowl_v1</code> seed to show how concentrated sportsbook downside changes as external
-              liquidity becomes available.
+              This explainer uses the paper-calibrated
+              <code>superbowl_v1</code> sportsbook baseline to show how concentrated downside changes as external
+              liquidity becomes available across tens to hundreds of millions of dollars in liability.
             </p>
           </div>
 
           <aside class="hero-aside">
             <p class="aside-label">Scenario</p>
-            <p class="aside-value">Canonical Super Bowl preset</p>
-            <p class="aside-meta" id="seedNote">Seed <code>superbowl_v1</code> · 500 paths · Liability $2,000</p>
+            <p class="aside-value">Paper-calibrated Super Bowl baseline</p>
+            <p class="aside-meta" id="seedNote">Seed <code>superbowl_v1</code> · Liability $136,000,000 · Requested hedge 60%</p>
           </aside>
         </section>
 
@@ -59,15 +59,6 @@
               <button type="button" class="segment" data-strategy="internal_reprice">Internal Reprice</button>
               <button type="button" class="segment" data-strategy="hybrid">Hybrid</button>
             </div>
-
-            <label class="metric-picker" for="curveMetricSelect">
-              <span>Step 3 metric</span>
-              <select id="curveMetricSelect">
-                <option value="effective_fraction">Effective Hedge %</option>
-                <option value="effective_notional">Effective Hedge Notional</option>
-                <option value="hedge_gap">Unfilled Hedge Gap</option>
-              </select>
-            </label>
           </div>
         </section>
 
@@ -198,15 +189,15 @@
 
               <div class="metrics-row">
                 <article class="metric-card">
-                  <p class="metric-label">Selected Metric</p>
+                  <p class="metric-label">Requested Hedge Fraction</p>
                   <p class="metric-value" id="step3MetricValue">—</p>
                 </article>
                 <article class="metric-card">
-                  <p class="metric-label">Requested Hedge Fraction</p>
+                  <p class="metric-label">Effective Hedge Fraction</p>
                   <p class="metric-value" id="step3HedgeRatio">—</p>
                 </article>
                 <article class="metric-card">
-                  <p class="metric-label">Liquidity Binding Points</p>
+                  <p class="metric-label">Liquidity Binding</p>
                   <p class="metric-value" id="step3BindingCount">—</p>
                 </article>
               </div>

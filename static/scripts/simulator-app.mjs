@@ -11,7 +11,7 @@ import {
 } from "/static/scripts/simulator-state.mjs";
 
 const PRESETS = {
-  superbowl: { label: "Super Bowl", liability: 120_000_000, liquidity: 20_000_000, hedgeFraction: 0.6 },
+  superbowl: { label: "Super Bowl", liability: 136_000_000, liquidity: 20_000_000, hedgeFraction: 0.6 },
   election: { label: "Election", liability: 180_000_000, liquidity: 35_000_000, hedgeFraction: 0.45 },
   weather: { label: "Weather", liability: 60_000_000, liquidity: 8_000_000, hedgeFraction: 0.7 },
 };
@@ -109,7 +109,7 @@ function updateDisplay() {
   refs.liabilityValue.textContent = formatCurrency(state.liability);
   refs.liquidityValue.textContent = formatCurrency(state.liquidity);
   refs.hedgeValue.textContent = `${Math.round(state.hedgeFraction * 100)}%`;
-  refs.requestedFractionValue.textContent = `${Math.round(state.hedgeFraction * 100)}%`;
+  refs.requestedFractionValue.textContent = formatFraction(state.hedgeFraction);
 }
 
 function updateActivePreset() {
@@ -255,7 +255,7 @@ function renderCurve(data) {
   const liabilities = data.curve_points.map((point) => point.liability);
   const mediumPoint = data.curve_points.find((point) => Math.abs(point.liability - state.liability) < 1) ?? data.curve_points[0];
 
-  refs.effectiveFractionValue.textContent = `${Math.round((mediumPoint?.effective_hedge_fraction ?? 0) * 100)}%`;
+  refs.effectiveFractionValue.textContent = formatFraction(mediumPoint?.effective_hedge_fraction ?? 0);
   refs.liquidityBindingValue.textContent = mediumPoint?.liquidity_binding ? "Yes" : "No";
 
   window.Plotly.newPlot(
@@ -371,6 +371,13 @@ function formatCurrency(value) {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+/**
+ * @param {number} value
+ */
+function formatFraction(value) {
+  return value.toFixed(2);
 }
 
 init();

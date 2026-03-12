@@ -3,7 +3,7 @@ import { buildRegimeCurves, classifyFeasibility, FEASIBILITY_THRESHOLDS } from "
 const FIGURE_TITLES = [
   "Figure 0: Event Market Risk Transfer Mechanism",
   "Figure 1: Sportsbook Hedging Feasibility Map",
-  "Figure 2: Liquidity-Constrained Risk Transfer Curve",
+  "Figure 2: Deterministic Hedge Capacity Curve",
   "Figure 3: Sportsbook Risk Profile Under Hedging",
   "Figure 4: Tail-Risk Compression",
   "Figure 5: Hedging Efficiency Frontier"
@@ -26,7 +26,7 @@ let currentObserver = null;
 const FIGURE_DESCRIPTIONS = [
   "Mechanism view of how sportsbook exposure interacts with event-market depth and residual downside.",
   "Canonical feasibility zoning for sportsbook hedge capacity under preset liquidity constraints.",
-  "Transfer curve showing how hedging effectiveness changes as liability scales through finite depth.",
+  "Deterministic capacity curve showing hedgeable fraction of exposure as liability scales through finite depth.",
   "Static risk-profile comparison for the preset before and after hedging.",
   "Distribution overlay focused on left-tail compression under the active preset.",
   "Efficiency frontier showing EV traded for tail-risk reduction across hedge ratios.",
