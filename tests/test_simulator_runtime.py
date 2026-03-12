@@ -242,6 +242,14 @@ class TestSimulatorRuntimeRoute:
         assert "export function applyViewState" in view_state
         assert ".sim-footer" in css
         assert 'console.info("[simulator] resolved API base:", client.baseUrl, client.baseUrls);' in script
+        assert "validatePanelPayload(panelKey, rawPayload);" in script
+        assert "const data = derivePanelData(panelKey, rawPayload);" in script
+        assert 'throw createStageError("render", "Could not render charts. Simulation data was received."' in script
+        assert 'throw createStageError("payload", `Simulation returned unexpected data. Missing: ${missing.join(", ")}`' in script
+        assert 'throw createStageError("derivation", "Could not compute chart inputs from simulation data."' in script
+        assert "function createStageError(kind, message, details = {})" in script
+        assert "function isStageError(error)" in script
+        assert "function formatStageErrorDetail(error)" in script
         assert "normalizeCurveResponse" in script
         assert "normalizeHistogram" in script
         assert "buildFallbackLiquidityRegimes" in script
@@ -249,9 +257,14 @@ class TestSimulatorRuntimeRoute:
         assert '"requested_hedge_fraction"' in script
         assert '"optimal_hedge_ratio"' in script
         assert "if (shouldDebugApi) {" in script
-        assert 'return "Simulation unavailable. Try again.";'.strip() in script
-        assert 'return "Simulation unavailable for this scenario.";'.strip() in script
+        assert 'return "Could not reach simulation server.";'.strip() in script
+        assert 'return error.message;' in script
+        assert "Could not reach simulation server." in script
+        assert "Could not render charts. Simulation data was received." in script
+        assert "Could not compute chart inputs from simulation data." in script
+        assert "Simulation returned unexpected data. Missing:" in script
         assert "formatErrorDetail" in script
+        assert "Simulation unavailable. Try again." not in script
 
     def test_simulator_route_does_not_register_service_workers(self):
         html = client.get("/simulator").text

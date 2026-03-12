@@ -169,10 +169,10 @@ async function runSimulation() {
     loadPanel(
       "distribution",
       requestId,
-      () => client.fetchDistribution(requestState).then(normalizeDistributionResponse),
+      () => client.fetchDistribution(requestState),
       renderDistribution,
     ),
-    loadPanel("curve", requestId, () => client.fetchInteractiveCurve(requestState).then(normalizeCurveResponse), renderCurve),
+    loadPanel("curve", requestId, () => client.fetchInteractiveCurve(requestState), renderCurve),
     loadPanel("frontier", requestId, () => client.fetchFrontier(requestState), renderFrontier),
   ]);
 
@@ -211,11 +211,20 @@ function setPanelsState(status, message = "") {
  */
 async function loadPanel(panelKey, requestId, load, render) {
   try {
-    const data = await load();
+    const rawPayload = await load();
+    validatePanelPayload(panelKey, rawPayload);
+    const data = derivePanelData(panelKey, rawPayload);
     if (requestId !== state.requestId) {
       return { ok: false, stale: true };
     }
-    render(data);
+    try {
+      render(data);
+    } catch (error) {
+      throw createStageError("render", "Could not render charts. Simulation data was received.", {
+        panelKey,
+        cause: error,
+      });
+    }
     refs.panels[panelKey].shell.dataset.loading = "false";
     applyViewState(refs.panels[panelKey], "ready");
     return { ok: true };
@@ -226,6 +235,42 @@ async function loadPanel(panelKey, requestId, load, render) {
     refs.panels[panelKey].shell.dataset.loading = "false";
     applyViewState(refs.panels[panelKey], "error", normalizeError(error));
     return { ok: false, error };
+  }
+}
+
+function validatePanelPayload(panelKey, payload) {
+  const requiredFields = {
+    distribution: ["unhedged", "hedged"],
+    curve: ["curve_points", "liquidity_regimes"],
+    frontier: ["frontiers"],
+  };
+  const missing = (requiredFields[panelKey] ?? []).filter((field) => payload?.[field] == null);
+  if (missing.length > 0) {
+    throw createStageError("payload", `Simulation returned unexpected data. Missing: ${missing.join(", ")}`, {
+      panelKey,
+      missing,
+      payload,
+    });
+  }
+}
+
+function derivePanelData(panelKey, payload) {
+  try {
+    if (panelKey === "distribution") {
+      return normalizeDistributionResponse(payload);
+    }
+    if (panelKey === "curve") {
+      return normalizeCurveResponse(payload);
+    }
+    if (panelKey === "frontier") {
+      return payload;
+    }
+    return payload;
+  } catch (error) {
+    throw createStageError("derivation", "Could not compute chart inputs from simulation data.", {
+      panelKey,
+      cause: error,
+    });
   }
 }
 
@@ -385,6 +430,12 @@ function baseLayout(xTitle, yTitle) {
  * @param {unknown} error
  */
 function normalizeError(error) {
+  if (isStageError(error)) {
+    if (shouldDebugApi) {
+      return formatStageErrorDetail(error);
+    }
+    return error.message;
+  }
   if (error instanceof ApiError) {
     if (shouldDebugApi) {
       if (error.kind === "timeout") {
@@ -398,18 +449,9 @@ function normalizeError(error) {
       }
       return formatErrorDetail(error, error.message);
     }
-    if (error.kind === "timeout") {
-      return "Simulation unavailable. The request timed out.";
-    }
-    if (error.kind === "validation") {
-      return "Simulation unavailable for this scenario.";
-    }
-    if (error.kind === "http" && error.status) {
-      return "Simulation unavailable. Try again.";
-    }
-    return "Simulation unavailable. Try again.";
+    return "Could not reach simulation server.";
   }
-  return "The live API could not be reached.";
+  return "Could not reach simulation server.";
 }
 
 refs.effectiveFractionValue.textContent = "—";
@@ -563,6 +605,27 @@ function formatErrorDetail(error, fallback) {
   const status = error.status ? ` [${error.status}]` : "";
   const body = error.responseText ? ` ${error.responseText}` : "";
   return `${fallback} ${location}${status}.${body}`.trim();
+}
+
+function createStageError(kind, message, details = {}) {
+  const error = new Error(message);
+  error.name = "SimulatorStageError";
+  error.kind = kind;
+  error.details = details;
+  return error;
+}
+
+function isStageError(error) {
+  return error instanceof Error && error.name === "SimulatorStageError";
+}
+
+function formatStageErrorDetail(error) {
+  const panel = error.details?.panelKey ? ` panel=${error.details.panelKey}` : "";
+  const missing = Array.isArray(error.details?.missing) && error.details.missing.length
+    ? ` missing=${error.details.missing.join(",")}`
+    : "";
+  const cause = error.details?.cause instanceof Error ? ` cause=${error.details.cause.message}` : "";
+  return `${error.message}${panel}${missing}${cause}`.trim();
 }
 
 init();
