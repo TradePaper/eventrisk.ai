@@ -10,25 +10,11 @@ const STRATEGY_LABELS = {
   internal_reprice: "Internal Reprice",
   hybrid: "Hybrid",
 };
-const CURVE_METRICS = {
-  effective_fraction: {
-    label: "Effective Hedge %",
-    accessor: (point) => point.effective_hedge_fraction * 100,
-    axis: "Effective hedge fraction (%)",
-    hover: ".1f",
-  },
-  effective_notional: {
-    label: "Effective Hedge Notional",
-    accessor: (point) => point.effective_hedge_notional,
-    axis: "Effective hedge notional ($)",
-    hover: "$,.0f",
-  },
-  hedge_gap: {
-    label: "Unfilled Hedge Gap",
-    accessor: (point) => point.requested_hedge_notional - point.effective_hedge_notional,
-    axis: "Requested minus effective hedge ($)",
-    hover: "$,.0f",
-  },
+const CAPACITY_METRIC = {
+  label: "Effective Hedge Fraction",
+  accessor: (point) => point.effective_hedge_fraction * 100,
+  axis: "Hedgeable fraction of exposure (%)",
+  hover: ".1f",
 };
 const BASE_DISTRIBUTION_INPUT = {
   liability: 136_000_000,
@@ -82,7 +68,6 @@ const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debug
 const state = {
   activeStep: 0,
   strategy: "external_hedge",
-  curveMetric: "effective_fraction",
   cache: new Map(),
   hasStaticFallback: false,
   baselineRequestId: 0,
@@ -94,7 +79,6 @@ const refs = {
   back: /** @type {HTMLButtonElement} */ (document.getElementById("btnBack")),
   next: /** @type {HTMLButtonElement} */ (document.getElementById("btnNext")),
   seedNote: document.getElementById("seedNote"),
-  metricSelect: /** @type {HTMLSelectElement} */ (document.getElementById("curveMetricSelect")),
   stepDots: Array.from(document.querySelectorAll("[data-step-target]")),
   strategyButtons: Array.from(document.querySelectorAll("[data-strategy]")),
   steps: Array.from(document.querySelectorAll("[data-step-index]")),
@@ -146,13 +130,6 @@ async function init() {
 function bindEvents() {
   refs.back.addEventListener("click", () => goToStep(state.activeStep - 1));
   refs.next.addEventListener("click", () => goToStep(state.activeStep + 1));
-
-  refs.metricSelect.addEventListener("change", () => {
-    state.curveMetric = refs.metricSelect.value;
-    if (!updateCurveCardFromCache()) {
-      void hydrateStrategyViews(state.strategy, { forceRefresh: true });
-    }
-  });
 
   refs.stepDots.forEach((button) => {
     button.addEventListener("click", () => {
@@ -390,22 +367,21 @@ function renderStep2(data) {
 }
 
 function renderStep3(data) {
-  const metric = CURVE_METRICS[state.curveMetric];
   const regimes = data.liquidity_regimes ?? [];
   const medium = regimes.find((regime) => regime.id === "medium") ?? { curve_points: data.curve_points };
   const points = medium.curve_points;
   const lastPoint = points[points.length - 1];
   const bindingCount = points.filter((point) => point.liquidity_binding).length;
 
-  refs.metrics.step3MetricValue.textContent = formatMetricValue(metric, metric.accessor(lastPoint));
-  refs.metrics.step3HedgeRatio.textContent = `${(lastPoint.requested_hedge_fraction * 100).toFixed(0)}%`;
-  refs.metrics.step3BindingCount.textContent = `${bindingCount}/${points.length}`;
+  refs.metrics.step3MetricValue.textContent = `${(lastPoint.requested_hedge_fraction * 100).toFixed(0)}%`;
+  refs.metrics.step3HedgeRatio.textContent = `${(lastPoint.effective_hedge_fraction * 100).toFixed(0)}%`;
+  refs.metrics.step3BindingCount.textContent = bindingCount > 0 ? `Yes (${bindingCount}/${points.length})` : "No";
 
   window.Plotly.react(
     refs.plots.step3,
     regimes.map((regime) => ({
         x: regime.curve_points.map((point) => point.liability),
-        y: regime.curve_points.map((point) => metric.accessor(point)),
+        y: regime.curve_points.map((point) => CAPACITY_METRIC.accessor(point)),
         type: "scatter",
         mode: "lines+markers",
         name: regime.label,
@@ -420,22 +396,24 @@ function renderStep3(data) {
         },
         hovertemplate:
           "Liability: %{x:$,.0f}<br>" +
-          `${metric.label}: %{y:${metric.hover}}<br>` +
-          "Requested hedge: %{customdata:.0%}<extra></extra>",
-        customdata: regime.curve_points.map((point) => point.requested_hedge_fraction),
+          `${CAPACITY_METRIC.label}: %{y:${CAPACITY_METRIC.hover}}%<br>` +
+          "Requested hedge: %{customdata[0]:.0%}<br>" +
+          "Effective hedge: %{customdata[1]:.0%}<extra></extra>",
+        customdata: regime.curve_points.map((point) => [point.requested_hedge_fraction, point.effective_hedge_fraction]),
       })),
     {
-      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability", metric.axis),
+      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability", CAPACITY_METRIC.axis),
       annotations: [
         zoneLabel("Meaningful hedging", 0.16),
         zoneLabel("Partial hedging", 0.5),
         zoneLabel("No effective hedging", 0.84),
       ],
       yaxis: {
-        title: metric.axis,
-        tickformat: state.curveMetric === "effective_fraction" ? ",.0f" : "$,.0f",
+        title: CAPACITY_METRIC.axis,
+        tickformat: ",.0f",
         gridcolor: "rgba(156, 171, 205, 0.1)",
         zeroline: false,
+        range: [0, 100],
       },
       xaxis: {
         title: "Sportsbook liability ($)",
@@ -571,16 +549,16 @@ function renderStaticStep2(preset) {
 }
 
 function renderStaticStep3(preset) {
-  const metric = CURVE_METRICS[state.curveMetric];
   const liabilities = preset.step3.liabilities_m.map((value) => value * 1_000_000);
   const regimes = buildRegimeCurves(liabilities, preset.meta.target_hedge_ratio, preset.meta.liquidity_usd);
-  renderPresetCurve(regimes, metric);
+  renderPresetCurve(regimes);
   const medium = regimes.find((regime) => regime.id === "medium");
   const points = medium ? medium.curve_points : [];
   const lastPoint = points[points.length - 1];
-  refs.metrics.step3MetricValue.textContent = formatMetricValue(metric, metric.accessor(lastPoint));
-  refs.metrics.step3HedgeRatio.textContent = `${Math.round(lastPoint.requested_hedge_fraction * 100)}%`;
-  refs.metrics.step3BindingCount.textContent = `${points.filter((point) => point.liquidity_binding).length}/${points.length}`;
+  const bindingCount = points.filter((point) => point.liquidity_binding).length;
+  refs.metrics.step3MetricValue.textContent = `${Math.round(lastPoint.requested_hedge_fraction * 100)}%`;
+  refs.metrics.step3HedgeRatio.textContent = `${Math.round(lastPoint.effective_hedge_fraction * 100)}%`;
+  refs.metrics.step3BindingCount.textContent = bindingCount > 0 ? `Yes (${bindingCount}/${points.length})` : "No";
   setStepState("step3", "ready");
 }
 
@@ -638,13 +616,12 @@ function renderStaticDistribution({ host, title, bins, primaryName, primaryValue
   );
 }
 
-function renderPresetCurve(regimes, metric) {
+function renderPresetCurve(regimes) {
   window.Plotly.react(
     refs.plots.step3,
     regimes.map((regime) => ({
         x: regime.curve_points.map((point) => point.liability / 1_000_000),
-        y: regime.curve_points.map((point) =>
-          state.curveMetric === "effective_fraction" ? metric.accessor(point) : metric.accessor(point) / 1_000_000),
+        y: regime.curve_points.map((point) => CAPACITY_METRIC.accessor(point)),
         type: "scatter",
         mode: "lines+markers",
         name: regime.label,
@@ -659,22 +636,24 @@ function renderPresetCurve(regimes, metric) {
         },
         hovertemplate:
           "Liability: %{x:.0f}M<br>" +
-          `${metric.label}: %{y:${state.curveMetric === "effective_fraction" ? ".1f" : ".1f"}}${state.curveMetric === "effective_fraction" ? "%" : "M"}<br>` +
-          "Requested hedge: %{customdata:.0%}<extra></extra>",
-        customdata: regime.curve_points.map((point) => point.requested_hedge_fraction),
+          `${CAPACITY_METRIC.label}: %{y:.1f}%<br>` +
+          "Requested hedge: %{customdata[0]:.0%}<br>" +
+          "Effective hedge: %{customdata[1]:.0%}<extra></extra>",
+        customdata: regime.curve_points.map((point) => [point.requested_hedge_fraction, point.effective_hedge_fraction]),
       })),
     {
-      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability (USD, millions)", state.curveMetric === "effective_fraction" ? "Effective hedge fraction (%)" : `${metric.label} (USD, millions)`),
+      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability (USD, millions)", "Hedgeable fraction of exposure (%)"),
       annotations: [
         zoneLabel("Meaningful hedging", 0.16),
         zoneLabel("Partial hedging", 0.5),
         zoneLabel("No effective hedging", 0.84),
       ],
       yaxis: {
-        title: state.curveMetric === "effective_fraction" ? "Effective hedge fraction (%)" : `${metric.label} (USD, millions)`,
-        tickformat: state.curveMetric === "effective_fraction" ? ",.0f" : ",.1f",
+        title: "Hedgeable fraction of exposure (%)",
+        tickformat: ",.0f",
         gridcolor: "rgba(156, 171, 205, 0.1)",
         zeroline: false,
+        range: [0, 100],
       },
       xaxis: {
         title: "Sportsbook liability (USD, millions)",
@@ -776,8 +755,7 @@ function syncStepFromScroll() {
 function updateControlUi() {
   refs.back.disabled = state.activeStep === 0;
   refs.next.disabled = state.activeStep === refs.steps.length - 1;
-  refs.metricSelect.value = state.curveMetric;
-  refs.seedNote.textContent = `Seed superbowl_v1 · 500 paths · Strategy ${STRATEGY_LABELS[state.strategy]}`;
+  refs.seedNote.textContent = `Seed superbowl_v1 · Paper-calibrated liability $136M · Strategy ${STRATEGY_LABELS[state.strategy]}`;
 
   refs.stepDots.forEach((button, index) => {
     button.classList.toggle("active", index === state.activeStep);
@@ -878,11 +856,4 @@ function normalizeError(error) {
     return error.message;
   }
   return "Unable to load live simulation data.";
-}
-
-function formatMetricValue(metric, value) {
-  if (metric === CURVE_METRICS.effective_fraction) {
-    return `${value.toFixed(0)}%`;
-  }
-  return formatCurrency(value);
 }

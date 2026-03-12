@@ -48,8 +48,13 @@ class TestRedesignRoutes:
         assert "External Hedge" in text
         assert "Internal Reprice" in text
         assert "Hybrid" in text
-        assert "CVaR-95" in text
-        assert "Effective Hedge %" in text
+        assert "Paper-calibrated Super Bowl baseline" in text
+        assert "Requested Hedge Fraction" in text
+        assert "Effective Hedge Fraction" in text
+        assert "Liquidity Binding" in text
+        assert "Selected Metric" not in text
+        assert "Liquidity Binding Points" not in text
+        assert "Step 3 metric" not in text
         assert "Requested Hedge Fraction" in text
         assert "superbowl_v1" in text
         assert "id=\"btnBack\"" in text
@@ -70,7 +75,7 @@ class TestRedesignRoutes:
         expected_titles = [
             "Figure 0: Event Market Risk Transfer Mechanism",
             "Figure 1: Sportsbook Hedging Feasibility Map",
-            "Figure 2: Liquidity-Constrained Risk Transfer Curve",
+            "Figure 2: Deterministic Hedge Capacity Curve",
             "Figure 3: Sportsbook Risk Profile Under Hedging",
             "Figure 4: Tail-Risk Compression",
             "Figure 5: Hedging Efficiency Frontier",
@@ -161,10 +166,9 @@ class TestRedesignRoutes:
         assert 'const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debugApi") === "1";' in text
         assert 'console.info("[explainer] resolved API base:", client.baseUrl);' in text
         assert 'const EXPLAINER_FALLBACK_PRESET = "/lib/presets/superbowl.json";' in text
+        assert "const CAPACITY_METRIC = {" in text
         assert "await hydrateStaticFallback();" in text
         assert 'await hydrateStrategyViews(strategy, { forceRefresh: true });' in text
-        assert "if (!updateCurveCardFromCache()) {" in text
-        assert 'void hydrateStrategyViews(state.strategy, { forceRefresh: true });' in text
         assert "const step2Key = getStep2CacheKey(strategy);" in text
         assert "const step3Key = getStep3CacheKey(strategy);" in text
         assert "const requestId = ++state.strategyRequestId;" in text
@@ -179,6 +183,9 @@ class TestRedesignRoutes:
         assert "renderStaticStep2(preset);" in text
         assert "renderStaticStep3(preset);" in text
         assert 'applyViewState({ plot, skeleton, error }, status);' in text
+        assert "Selected Metric" not in text
+        assert "Optimal Hedge Ratio" not in text
+        assert "Liquidity Binding Points" not in text
 
     def test_explainer_step_scroller_css_avoids_chrome_height_traps(self):
         css = client.get("/static/styles/eventrisk.css").text

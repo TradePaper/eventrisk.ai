@@ -114,6 +114,9 @@ class TestSimulatorRuntimeRoute:
         assert "Read the Paper" in text
         assert "Sportsbook Loss Distribution" in text
         assert "Deterministic Hedge Capacity Curve" in text
+        assert "Hedgeable fraction of exposure versus liability under low, medium, and high liquidity constraints." in text
+        assert "Requested" in text
+        assert "Effective" in text
         assert "Hedging Efficiency Frontier" in text
         assert "Simulation unavailable. Retry?" in text
         assert "/runtime-config.js" in text
@@ -183,6 +186,8 @@ class TestSimulatorRuntimeRoute:
         assert "const query = serializeSimulatorState(state);" in text
         assert 'window.history.replaceState({}, "", `/simulator?${query}`);' in text
         assert "const shareUrl = `${window.location.origin}/simulator?${serializeSimulatorState(state)}`;" in text
+        assert "refs.requestedFractionValue.textContent" in text
+        assert "refs.effectiveFractionValue.textContent" in text
 
     def test_simulator_app_does_not_render_duplicate_plot_titles(self):
         text = client.get("/static/scripts/simulator-app.mjs").text
