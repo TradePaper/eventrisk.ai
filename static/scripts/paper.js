@@ -1,24 +1,30 @@
-import { buildRegimeCurves, classifyFeasibility, FEASIBILITY_THRESHOLDS } from "/static/scripts/hedge-capacity.mjs";
-
 const FIGURE_TITLES = [
   "Figure 0: Event Market Risk Transfer Mechanism",
   "Figure 1: Sportsbook Hedging Feasibility Map",
   "Figure 2: Deterministic Hedge Capacity Curve",
   "Figure 3: Sportsbook Risk Profile Under Hedging",
   "Figure 4: Tail-Risk Compression",
-  "Figure 5: Hedging Efficiency Frontier"
+  "Figure 5: Hedging Efficiency Frontier",
 ];
 
 const PRESETS = {
   superbowl: "/lib/presets/superbowl.json",
   election: "/lib/presets/election.json",
-  weather: "/lib/presets/weather.json"
+  weather: "/lib/presets/weather.json",
 };
+
+const runtimeConfig =
+  window.__EVENTRISK_CONFIG ?? window.__EVENTRISK_RUNTIME_CONFIG__ ?? window.__RUNTIME_CONFIG__ ?? {};
+const PAPER_BUILD_ID = String(runtimeConfig.buildId ?? "").trim();
 
 let presetButtons = [];
 let listEl = null;
 let stickyTitle = null;
 let stickyCaption = null;
+let buildRegimeCurves = null;
+let classifyFeasibility = null;
+let FEASIBILITY_THRESHOLDS = { noEffectiveMax: 0.1, partialMax: 0.4 };
+let paperDependenciesPromise = null;
 
 let activePreset = "superbowl";
 let currentObserver = null;
@@ -62,7 +68,7 @@ function cardMarkup(index, title, description, summaryLabel) {
 
 function buildCards(data) {
   listEl.innerHTML = FIGURE_TITLES.map((title, index) =>
-    cardMarkup(index, title, FIGURE_DESCRIPTIONS[index], `${title} summary`)
+    cardMarkup(index, title, FIGURE_DESCRIPTIONS[index], `${title} summary`),
   ).join("");
 
   const cardsEls = Array.from(document.querySelectorAll(".figure-card"));
@@ -105,14 +111,21 @@ async function loadPreset(presetKey) {
   });
 }
 
-function bootPaper() {
+async function bootPaper() {
   presetButtons = Array.from(document.querySelectorAll(".preset-btn"));
   listEl = document.getElementById("figureList");
   stickyTitle = document.getElementById("currentFigure");
   stickyCaption = document.getElementById("currentCaption");
 
-  if (!listEl || !stickyTitle || !stickyCaption || typeof window.Plotly?.react !== "function") {
+  if (!listEl || !stickyTitle || !stickyCaption) {
     console.error("[paper] chart runtime unavailable");
+    return;
+  }
+
+  try {
+    await loadPaperDependencies();
+  } catch (error) {
+    console.error("[paper] chart runtime unavailable", error);
     return;
   }
 
@@ -121,9 +134,38 @@ function bootPaper() {
 }
 
 if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootPaper, { once: true });
+  document.addEventListener("DOMContentLoaded", () => {
+    void bootPaper();
+  }, { once: true });
 } else {
-  bootPaper();
+  void bootPaper();
+}
+
+async function loadPaperDependencies() {
+  if (!paperDependenciesPromise) {
+    paperDependenciesPromise = (async () => {
+      const hedgeCapacity = await import(versionedAssetPath("/static/scripts/hedge-capacity.mjs"));
+      await waitForPlotly();
+      buildRegimeCurves = hedgeCapacity.buildRegimeCurves;
+      classifyFeasibility = hedgeCapacity.classifyFeasibility;
+      FEASIBILITY_THRESHOLDS = hedgeCapacity.FEASIBILITY_THRESHOLDS;
+    })();
+  }
+  await paperDependenciesPromise;
+}
+
+function versionedAssetPath(path) {
+  return PAPER_BUILD_ID ? `${path}?v=${encodeURIComponent(PAPER_BUILD_ID)}` : path;
+}
+
+async function waitForPlotly() {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (typeof window.Plotly?.react === "function") {
+      return;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+  }
+  throw new Error("Plotly runtime unavailable");
 }
 
 function renderFigure0(data) {
@@ -133,8 +175,6 @@ function renderFigure0(data) {
     (regime) => regime.id === "medium",
   );
   const lastPoint = mediumCurve.curve_points[mediumCurve.curve_points.length - 1];
-  // FLAG: the bundled preset data does not include the paper's original Figure 0 graphic,
-  // so this renders a qualitative mechanism diagram using only shipped preset metadata.
   plotEl.innerHTML = `
     <div class="mechanism-diagram" role="img" aria-label="${FIGURE_TITLES[0]}">
       <div class="mechanism-node">
@@ -449,18 +489,6 @@ function buildFeasibilityHeatmap(data) {
   };
 }
 
-function buildSnapshotSeries(data) {
-  return {
-    labels: ["Stake", "Liquidity", "Hedge Target", "Tail Reduction"],
-    values: [
-      normalizePct(data.meta.stake_usd / 2_000_000),
-      normalizePct(data.meta.liquidity_usd / 300_000),
-      round1(data.meta.target_hedge_ratio * 100),
-      round1(data.step2.tail_reduction_pct),
-    ],
-  };
-}
-
 function setSummary(figureNumber, entries) {
   const container = document.getElementById(`paperSummary${figureNumber}`);
   container.innerHTML = entries.map((entry) => `
@@ -538,10 +566,6 @@ function formatMillions(value) {
 
 function formatCount(value) {
   return new Intl.NumberFormat("en-US").format(value);
-}
-
-function normalizePct(value) {
-  return Math.max(8, Math.min(100, round1(value)));
 }
 
 function round1(value) {

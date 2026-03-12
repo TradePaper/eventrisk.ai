@@ -98,8 +98,11 @@ class TestRedesignRoutes:
         assert "figure-notes" not in js
         assert js.count("window.Plotly.react(") == 5
         assert 'const PRESETS = {' in js
-        assert 'document.addEventListener("DOMContentLoaded", bootPaper, { once: true });' in js
-        assert 'typeof window.Plotly?.react !== "function"' in js
+        assert 'const PAPER_BUILD_ID = String(runtimeConfig.buildId ?? "").trim();' in js
+        assert 'import(versionedAssetPath("/static/scripts/hedge-capacity.mjs"))' in js
+        assert "await loadPaperDependencies();" in js
+        assert "await waitForPlotly();" in js
+        assert 'console.error("[paper] chart runtime unavailable", error);' in js
         assert "void renderFigures(data);" in js
         assert "buildStaticFrontierSeries" in js
         assert 'fetch("/api/tier2/frontier"' not in js

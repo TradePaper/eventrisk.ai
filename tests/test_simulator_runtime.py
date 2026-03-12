@@ -250,6 +250,7 @@ class TestSimulatorRuntimeRoute:
         assert "function createStageError(kind, message, details = {})" in script
         assert "function isStageError(error)" in script
         assert "function formatStageErrorDetail(error)" in script
+        assert "function summarizeFailures(failures)" in script
         assert "normalizeCurveResponse" in script
         assert "normalizeHistogram" in script
         assert "buildFallbackLiquidityRegimes" in script
@@ -263,6 +264,8 @@ class TestSimulatorRuntimeRoute:
         assert "Could not render charts. Simulation data was received." in script
         assert "Could not compute chart inputs from simulation data." in script
         assert "Simulation returned unexpected data. Missing:" in script
+        assert 'return `Chart ${Array.from(stages).join("/")} issue`;' in script
+        assert 'return "Simulation API issue";' in script
         assert "formatErrorDetail" in script
         assert "Simulation unavailable. Try again." not in script
 
