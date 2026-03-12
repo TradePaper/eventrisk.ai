@@ -101,6 +101,8 @@ class TestRedesignRoutes:
         assert 'document.addEventListener("DOMContentLoaded", bootPaper, { once: true });' in js
         assert 'typeof window.Plotly?.react !== "function"' in js
         assert "void renderFigures(data);" in js
+        assert "buildStaticFrontierSeries" in js
+        assert 'fetch("/api/tier2/frontier"' not in js
 
     def test_paper_route_includes_plotly_and_figure_mounts(self):
         resp = client.get("/paper")
@@ -164,34 +166,27 @@ class TestRedesignRoutes:
 
     def test_explainer_controls_trigger_live_refresh_paths(self):
         text = client.get("/static/scripts/explainer.js").text
-        assert "readRuntimeConfig" in text
-        assert "shouldEnableApiDebug" in text
-        assert 'console.info("[explainer] resolved API base:", client.baseUrl, client.baseUrls);' in text
-        assert 'const EXPLAINER_FALLBACK_PRESET = "/lib/presets/superbowl.json";' in text
+        static_data = client.get("/static/scripts/explainer-static-data.mjs").text
+        assert 'import { CANONICAL_EXPLAINER_SCENARIO, EXPLAINER_STATIC_DATA } from "/static/scripts/explainer-static-data.mjs";' in text
         assert "const CAPACITY_METRIC = {" in text
-        assert "await hydrateStaticFallback();" in text
-        assert 'void hydrateExplainer();' in text
-        assert 'await hydrateStrategyViews(strategy, { forceRefresh: true });' in text
-        assert "const step2Key = getStep2CacheKey(strategy);" in text
-        assert "const step3Key = getStep3CacheKey(strategy);" in text
-        assert "const requestId = ++state.strategyRequestId;" in text
-        assert "if (requestId !== state.strategyRequestId || strategy !== state.strategy) {" in text
-        assert "!forceRefresh && hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy)" in text
-        assert "!forceRefresh && hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy)" in text
-        assert 'seed: "superbowl_v1"' in text
+        assert "renderStaticScenario(state.strategy);" in text
+        assert "renderStaticScenario(strategy);" in text
+        assert "fetch(EXPLAINER_FALLBACK_PRESET" not in text
+        assert 'client.fetchJson("/api/risk-transfer/interactive"' not in text
+        assert 'client.fetchJson("/api/risk-transfer/distribution"' not in text
         assert 'refs.deck.scrollTo({ top: refs.steps[nextIndex].offsetTop, behavior: "smooth" });' in text
         assert "const deckMidpoint = deckRect.top + deckRect.height / 2;" in text
-        assert 'const response = await fetch(EXPLAINER_FALLBACK_PRESET, { cache: "force-cache" });' in text
-        assert "renderStaticStep1(preset);" in text
-        assert "renderStaticStep2(preset);" in text
-        assert "renderStaticStep3(preset);" in text
-        assert 'if (requestId === state.baselineRequestId && !state.hasStaticFallback) {' in text
-        assert 'if (!hasStep2Cache && !state.hasStaticFallback) {' in text
-        assert 'if (!hasStep3Cache && !state.hasStaticFallback) {' in text
+        assert "renderStaticStep1(scenario);" in text
+        assert "renderStaticStep2(scenario);" in text
+        assert "renderStaticStep3(scenario);" in text
         assert 'applyViewState({ plot, skeleton, error }, status);' in text
         assert "Selected Metric" not in text
         assert "Optimal Hedge Ratio" not in text
         assert "Liquidity Binding Points" not in text
+        assert "external_hedge" in static_data
+        assert "internal_reprice" in static_data
+        assert "hybrid" in static_data
+        assert '"seed": "superbowl_v1"' not in static_data
 
     def test_explainer_step_scroller_css_avoids_chrome_height_traps(self):
         css = client.get("/static/styles/eventrisk.css").text

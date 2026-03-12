@@ -245,8 +245,12 @@ class TestSimulatorRuntimeRoute:
         assert "normalizeCurveResponse" in script
         assert "normalizeHistogram" in script
         assert "buildFallbackLiquidityRegimes" in script
+        assert "const mediumRegime = regimes.find((regime) => regime.id === \"medium\") ?? regimes[0] ?? null;" in script
         assert '"requested_hedge_fraction"' in script
         assert '"optimal_hedge_ratio"' in script
+        assert "if (shouldDebugApi) {" in script
+        assert 'return "Simulation unavailable. Try again.";'.strip() in script
+        assert 'return "Simulation unavailable for this scenario.";'.strip() in script
         assert "formatErrorDetail" in script
 
     def test_simulator_route_does_not_register_service_workers(self):
@@ -286,6 +290,7 @@ class TestSimulatorRuntimeRoute:
         assert distribution_payload["strategy"] == "external_hedge"
         assert distribution_payload["requested_hedge_fraction"] == 0.6
         assert distribution_payload["effective_hedge_fraction"] <= distribution_payload["requested_hedge_fraction"]
+        assert distribution_payload["effective_hedge_fraction"] <= 0.20 + 1e-9
         assert len(distribution_payload["unhedged"]["bin_mids"]) > 0
         assert len(distribution_payload["hedged"]["bin_mids"]) > 0
 
@@ -314,6 +319,10 @@ class TestSimulatorRuntimeRoute:
         curve_payload = curve.json()
         assert len(curve_payload["curve_points"]) == 7
         assert len(curve_payload["liquidity_regimes"]) == 3
+        point_100m = min(curve_payload["curve_points"], key=lambda point: abs(point["liability"] - 100_000_000))
+        assert point_100m["requested_hedge_fraction"] == 0.6
+        assert point_100m["effective_hedge_fraction"] <= 0.20 + 1e-9
+        assert point_100m["liquidity_binding"] is True
 
         frontier = client.post(
             "/api/tier2/frontier",
