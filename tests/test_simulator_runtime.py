@@ -119,26 +119,35 @@ class TestSimulatorRuntimeRoute:
         assert "Effective" in text
         assert "Hedging Efficiency Frontier" in text
         assert "Simulation unavailable. Retry?" in text
-        assert "/runtime-config.js" in text
-        assert "/static/scripts/simulator-app.mjs" in text
+        assert "/runtime-config.js?v=" in text
+        assert "/static/scripts/simulator-app.mjs?v=" in text
         assert text.index("/runtime-config.js") < text.index("/static/scripts/simulator-app.mjs")
         assert "/simulator?v=1&amp;lb={liability}&amp;liq={liquidity}&amp;hf={hedgeFraction}" in text
+        assert "rev " in text
 
-    def test_runtime_config_defaults_api_base_to_replit_host_when_env_missing(self):
+    def test_runtime_config_defaults_api_base_to_same_origin_when_env_missing(self):
         resp = client.get("/runtime-config.js")
         assert resp.status_code == 200
         assert resp.headers["content-type"].startswith("application/javascript")
         assert "window.__EVENTRISK_CONFIG" in resp.text
         assert "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
         assert "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG" in resp.text
-        assert 'apiBaseUrl": "https://market-hedge-simulator.replit.app"' in resp.text
+        assert 'apiBaseUrl": "http://testserver"' in resp.text
         assert 'paperUrl": "https://eventrisk.ai/paper.pdf"' in resp.text
+        assert '"buildId": "' in resp.text
+        assert '"debugApi": false' in resp.text
 
-    def test_runtime_config_ignores_blank_api_base_env_and_keeps_replit_host(self, monkeypatch):
+    def test_runtime_config_ignores_blank_api_base_env_and_keeps_same_origin(self, monkeypatch):
         monkeypatch.setenv("API_BASE_URL", "   ")
         resp = client.get("/runtime-config.js")
         assert resp.status_code == 200
-        assert 'apiBaseUrl": "https://market-hedge-simulator.replit.app"' in resp.text
+        assert 'apiBaseUrl": "http://testserver"' in resp.text
+
+    def test_runtime_config_emits_configured_external_api_base(self, monkeypatch):
+        monkeypatch.setenv("API_BASE_URL", "https://api.eventrisk.ai/")
+        resp = client.get("/runtime-config.js")
+        assert resp.status_code == 200
+        assert 'apiBaseUrl": "https://api.eventrisk.ai"' in resp.text
 
     def test_runtime_config_emits_configured_external_paper_url(self, monkeypatch):
         monkeypatch.setenv("PAPER_URL", "https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1234567")
@@ -168,6 +177,14 @@ class TestSimulatorRuntimeRoute:
             text = client.get(route).text
             assert "/runtime-config.js" in text
             assert "/static/nav.js" in text
+
+    def test_version_endpoint_exposes_build_and_api_origin(self):
+        resp = client.get("/version.json")
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert "buildId" in payload
+        assert "gitSha" in payload
+        assert payload["apiBaseUrl"] == "http://testserver"
 
     def test_simulator_state_url_serialization_keys_are_stable(self):
         text = client.get("/static/scripts/simulator-state.mjs").text
@@ -203,11 +220,14 @@ class TestSimulatorRuntimeRoute:
 
     def test_api_client_uses_bounded_attempt_sequence_and_separates_validation_errors(self):
         text = client.get("/static/scripts/api-client.mjs").text
-        assert 'const DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app";' in text
+        assert 'const DEFAULT_API_BASE_URL = "";' in text
         assert "export function resolveApiBaseUrls" in text
+        assert "export function shouldEnableApiDebug" in text
         assert "return candidates.slice(0, 2);" in text
         assert 'response.status >= 400 && response.status < 500 ? "validation" : "http"' in text
         assert 'return attempt === 0 && totalAttempts > 1 && (error.kind === "timeout" || error.kind === "network");' in text
+        assert "responseText: text.slice(0, 400)" in text
+        assert "url = `${baseUrl}${path}`;" in text
 
     def test_simulator_ui_respects_hidden_state_for_panels(self):
         css = client.get("/static/styles/simulator.css").text
@@ -220,6 +240,20 @@ class TestSimulatorRuntimeRoute:
         assert 'applyViewState(refs.panels[panelKey], "ready");' in script
         assert 'applyViewState(refs.panels[panelKey], "error", normalizeError(error));' in script
         assert "export function applyViewState" in view_state
+        assert ".sim-footer" in css
+        assert 'console.info("[simulator] resolved API base:", client.baseUrl, client.baseUrls);' in script
+        assert "normalizeCurveResponse" in script
+        assert "normalizeHistogram" in script
+        assert "buildFallbackLiquidityRegimes" in script
+        assert '"requested_hedge_fraction"' in script
+        assert '"optimal_hedge_ratio"' in script
+        assert "formatErrorDetail" in script
+
+    def test_simulator_route_does_not_register_service_workers(self):
+        html = client.get("/simulator").text
+        script = client.get("/static/scripts/simulator-app.mjs").text
+        assert "serviceWorker" not in html
+        assert "serviceWorker" not in script
 
     def test_simulator_run_contract_endpoints_return_chart_data(self):
         distribution = client.post(
@@ -297,6 +331,20 @@ class TestSimulatorRuntimeRoute:
         assert "frontiers" in frontier_payload
         assert len(frontier_payload["frontiers"]["shallow"]) == 21
         assert len(frontier_payload["frontiers"]["deep"]) == 21
+
+    def test_interactive_error_schema_is_clear_for_frontend_diagnostics(self):
+        resp = client.post(
+            "/api/risk-transfer/interactive",
+            json={
+                "liability_min": 25_000_000,
+                "liability_max": 175_000_000,
+                "n_points": 7,
+                "objective": "not_a_real_objective",
+                "strategy": "external_hedge",
+            },
+        )
+        assert resp.status_code == 400
+        assert resp.json()["detail"].startswith("Unknown objective")
 
     def test_status_contract_remains_ok(self):
         resp = client.get("/status")

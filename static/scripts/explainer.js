@@ -1,10 +1,9 @@
 // @ts-check
 
-import { ApiError, createApiClient } from "/static/scripts/api-client.mjs";
+import { ApiError, createApiClient, readRuntimeConfig, shouldEnableApiDebug } from "/static/scripts/api-client.mjs";
 import { buildRegimeCurves } from "/static/scripts/hedge-capacity.mjs";
 import { applyViewState } from "/static/scripts/view-state.mjs";
 
-const LIVE_API_BASE_URL = "https://market-hedge-simulator.replit.app";
 const STRATEGY_LABELS = {
   external_hedge: "External Hedge",
   internal_reprice: "Internal Reprice",
@@ -63,8 +62,9 @@ const CURVE_PAYLOAD = {
 };
 const EXPLAINER_FALLBACK_PRESET = "/lib/presets/superbowl.json";
 
-const client = createApiClient({ fallbackBaseUrl: LIVE_API_BASE_URL });
-const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debugApi") === "1";
+const runtimeConfig = readRuntimeConfig();
+const client = createApiClient({ runtimeConfig });
+const shouldDebugApiBase = shouldEnableApiDebug(runtimeConfig);
 const state = {
   activeStep: 0,
   strategy: "external_hedge",
@@ -118,13 +118,13 @@ init().catch((error) => {
 
 async function init() {
   if (shouldDebugApiBase) {
-    console.info("[explainer] resolved API base:", client.baseUrl);
+    console.info("[explainer] resolved API base:", client.baseUrl, client.baseUrls);
   }
   bindEvents();
   updateControlUi();
   resetMetricText();
   await hydrateStaticFallback();
-  await hydrateExplainer();
+  void hydrateExplainer();
 }
 
 function bindEvents() {
@@ -223,8 +223,11 @@ async function hydrateBaseline() {
     renderStep1(step1Data);
     return step1Data;
   } catch (error) {
-    if (requestId === state.baselineRequestId) {
+    if (requestId === state.baselineRequestId && !state.hasStaticFallback) {
       setStepState("step1", "error");
+    }
+    if (shouldDebugApiBase) {
+      console.warn("[explainer] live baseline refresh failed", error);
     }
     throw error;
   }
@@ -271,8 +274,10 @@ async function hydrateStrategyViews(strategy, options = {}) {
     state.cache.set(step2Key, step2Result.value);
     renderStep2(step2Result.value);
   } else {
-    console.error(step2Result.reason);
-    if (!hasStep2Cache) {
+    if (shouldDebugApiBase) {
+      console.warn("[explainer] live Step 2 refresh failed", step2Result.reason);
+    }
+    if (!hasStep2Cache && !state.hasStaticFallback) {
       setStepState("step2", "error");
     }
   }
@@ -281,8 +286,10 @@ async function hydrateStrategyViews(strategy, options = {}) {
     state.cache.set(step3Key, step3Result.value);
     renderStep3(step3Result.value);
   } else {
-    console.error(step3Result.reason);
-    if (!hasStep3Cache) {
+    if (shouldDebugApiBase) {
+      console.warn("[explainer] live Step 3 refresh failed", step3Result.reason);
+    }
+    if (!hasStep3Cache && !state.hasStaticFallback) {
       setStepState("step3", "error");
     }
   }

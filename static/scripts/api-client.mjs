@@ -3,10 +3,13 @@
 /**
  * @typedef {{
  *   apiBaseUrl?: string;
+ *   paperUrl?: string;
+ *   buildId?: string;
+ *   debugApi?: boolean;
  * }} RuntimeConfig
  */
 
-const DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app";
+const DEFAULT_API_BASE_URL = "";
 
 /**
  * @typedef {{
@@ -23,13 +26,15 @@ export class ApiError extends Error {
   /**
    * @param {string} message
    * @param {"timeout" | "network" | "http" | "validation" | "parse"} kind
-   * @param {{ status?: number; cause?: unknown }} [options]
+   * @param {{ status?: number; cause?: unknown; url?: string; responseText?: string }} [options]
    */
   constructor(message, kind, options = {}) {
     super(message);
     this.name = "ApiError";
     this.kind = kind;
     this.status = options.status ?? null;
+    this.url = options.url ?? "";
+    this.responseText = options.responseText ?? "";
     this.cause = options.cause;
   }
 }
@@ -68,6 +73,25 @@ export function resolveApiBaseUrls(options = {}) {
   return candidates.slice(0, 2);
 }
 
+export function readRuntimeConfig() {
+  return (
+    (typeof window !== "undefined"
+      ? window.__EVENTRISK_CONFIG ?? window.__EVENTRISK_RUNTIME_CONFIG__ ?? window.__RUNTIME_CONFIG__
+      : null) ?? {}
+  );
+}
+
+export function shouldEnableApiDebug(runtimeConfig = readRuntimeConfig()) {
+  if (runtimeConfig?.debugApi) {
+    return true;
+  }
+  if (typeof window === "undefined") {
+    return false;
+  }
+  const url = new URL(window.location.href);
+  return url.searchParams.get("debugApi") === "1" || ["localhost", "127.0.0.1"].includes(url.hostname);
+}
+
 /**
  * @param {ApiClientOptions} [options]
  */
@@ -77,13 +101,14 @@ export function createApiClient(options = {}) {
   const locationOrigin =
     normalizeBaseUrl(options.locationOrigin) ||
     (typeof window !== "undefined" ? normalizeBaseUrl(window.location?.origin) : "");
+  const runtimeConfig = options.runtimeConfig ?? readRuntimeConfig();
   const baseUrls = resolveApiBaseUrls({
     baseUrl: options.baseUrl,
     fallbackBaseUrl: normalizeBaseUrl(options.fallbackBaseUrl, locationOrigin) || DEFAULT_API_BASE_URL,
-    runtimeConfig: options.runtimeConfig,
+    runtimeConfig,
     locationOrigin,
   });
-  const baseUrl = baseUrls[0] ?? DEFAULT_API_BASE_URL;
+  const baseUrl = baseUrls[0] ?? locationOrigin ?? DEFAULT_API_BASE_URL;
 
   if (typeof fetchImpl !== "function") {
     throw new Error("Fetch implementation is required.");
@@ -240,10 +265,11 @@ function normalizeBaseUrl(value, locationOrigin = "") {
 async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, timeoutMs) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(new Error("timeout")), timeoutMs);
+  const url = `${baseUrl}${path}`;
   let response;
 
   try {
-    response = await fetchImpl(`${baseUrl}${path}`, {
+    response = await fetchImpl(url, {
       ...init,
       signal: controller.signal,
       headers: {
@@ -253,7 +279,7 @@ async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, timeoutMs) {
       },
     });
   } catch (error) {
-    throw normalizeFetchError(error, timeoutMs);
+    throw normalizeFetchError(error, timeoutMs, url);
   } finally {
     clearTimeout(timer);
   }
@@ -268,6 +294,8 @@ async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, timeoutMs) {
         : `HTTP ${response.status}`;
     throw new ApiError(detail, response.status >= 400 && response.status < 500 ? "validation" : "http", {
       status: response.status,
+      url,
+      responseText: text.slice(0, 400),
     });
   }
 
@@ -277,15 +305,19 @@ async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, timeoutMs) {
 /**
  * @param {unknown} error
  * @param {number} timeoutMs
+ * @param {string} [url]
  */
-function normalizeFetchError(error, timeoutMs) {
+function normalizeFetchError(error, timeoutMs, url = "") {
   if (error instanceof ApiError) {
     return error;
   }
   if (isAbortError(error)) {
-    return new ApiError(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`, "timeout", { cause: error });
+    return new ApiError(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`, "timeout", {
+      cause: error,
+      url,
+    });
   }
-  return new ApiError("Unable to reach the simulation API.", "network", { cause: error });
+  return new ApiError("Unable to reach the simulation API.", "network", { cause: error, url });
 }
 
 /**

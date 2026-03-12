@@ -685,10 +685,20 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0 1rem;
   font-size: 0.82rem;
   background: rgba(10, 14, 26, 0.94);
+}
+
+.version-stamp {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 0.12rem 0.45rem;
+  color: var(--ink);
 }
 
 @keyframes shimmer {
