@@ -166,6 +166,8 @@ class TestRedesignRoutes:
         assert 'void hydrateStrategyViews(state.strategy, { forceRefresh: true });' in text
         assert "const step2Key = getStep2CacheKey(strategy);" in text
         assert "const step3Key = getStep3CacheKey(strategy);" in text
+        assert "const requestId = ++state.strategyRequestId;" in text
+        assert "if (requestId !== state.strategyRequestId || strategy !== state.strategy) {" in text
         assert "!forceRefresh && hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy)" in text
         assert "!forceRefresh && hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy)" in text
         assert 'seed: "superbowl_v1"' in text
@@ -175,6 +177,7 @@ class TestRedesignRoutes:
         assert "renderStaticStep1(preset);" in text
         assert "renderStaticStep2(preset);" in text
         assert "renderStaticStep3(preset);" in text
+        assert 'applyViewState({ plot, skeleton, error }, status);' in text
 
     def test_explainer_step_scroller_css_avoids_chrome_height_traps(self):
         css = client.get("/static/styles/eventrisk.css").text

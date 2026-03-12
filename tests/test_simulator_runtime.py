@@ -196,21 +196,25 @@ class TestSimulatorRuntimeRoute:
         assert "window.__EVENTRISK_CONFIG" in text
         assert "window.__RUNTIME_CONFIG__" in text
 
-    def test_api_client_defaults_to_replit_base_and_retries_same_origin_failure(self):
+    def test_api_client_uses_bounded_attempt_sequence_and_separates_validation_errors(self):
         text = client.get("/static/scripts/api-client.mjs").text
         assert 'const DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app";' in text
-        assert "shouldRetryAgainstFallback = baseUrl === locationOrigin" in text
-        assert "return await fetchJsonFromBase(fallbackBaseUrl, path, init, fetchImpl, controller.signal);" in text
+        assert "export function resolveApiBaseUrls" in text
+        assert "return candidates.slice(0, 2);" in text
+        assert 'response.status >= 400 && response.status < 500 ? "validation" : "http"' in text
+        assert 'return attempt === 0 && totalAttempts > 1 && (error.kind === "timeout" || error.kind === "network");' in text
 
     def test_simulator_ui_respects_hidden_state_for_panels(self):
         css = client.get("/static/styles/simulator.css").text
         script = client.get("/static/scripts/simulator-app.mjs").text
+        view_state = client.get("/static/scripts/view-state.mjs").text
         assert "[hidden]" in css
         assert "display: none !important;" in css
         assert 'function setPanelsState(status, message = "")' in script
-        assert 'panel.skeleton.hidden = status !== "loading";' in script
-        assert 'panel.error.hidden = status !== "error";' in script
-        assert 'panel.plot.hidden = status !== "ready";' in script
+        assert 'const requestId = ++state.requestId;' in script
+        assert 'applyViewState(refs.panels[panelKey], "ready");' in script
+        assert 'applyViewState(refs.panels[panelKey], "error", normalizeError(error));' in script
+        assert "export function applyViewState" in view_state
 
     def test_simulator_run_contract_endpoints_return_chart_data(self):
         distribution = client.post(

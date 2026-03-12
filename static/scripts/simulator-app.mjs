@@ -1,6 +1,7 @@
 // @ts-check
 
 import { createApiClient, ApiError } from "/static/scripts/api-client.mjs";
+import { applyViewState } from "/static/scripts/view-state.mjs";
 import {
   SIMULATOR_DEFAULTS,
   liquidityToLogValue,
@@ -20,6 +21,7 @@ const client = createApiClient();
 const state = {
   ...SIMULATOR_DEFAULTS,
   ...parseSimulatorState(new URL(window.location.href)),
+  requestId: 0,
 };
 
 const refs = {
@@ -144,30 +146,36 @@ async function copyShareLink() {
 }
 
 async function runSimulation() {
+  const requestId = ++state.requestId;
+  const requestState = {
+    liability: state.liability,
+    liquidity: state.liquidity,
+    hedgeFraction: state.hedgeFraction,
+  };
   refs.runButton.disabled = true;
   refs.chartStatus.textContent = "Running live simulation";
   setPanelsState("loading");
 
-  try {
-    const [distribution, curve, frontier] = await Promise.all([
-      client.fetchDistribution(state),
-      client.fetchInteractiveCurve(state),
-      client.fetchFrontier(state),
-    ]);
+  const results = await Promise.all([
+    loadPanel("distribution", requestId, () => client.fetchDistribution(requestState), renderDistribution),
+    loadPanel("curve", requestId, () => client.fetchInteractiveCurve(requestState), renderCurve),
+    loadPanel("frontier", requestId, () => client.fetchFrontier(requestState), renderFrontier),
+  ]);
 
-    renderDistribution(distribution);
-    renderCurve(curve);
-    renderFrontier(frontier);
-    refs.chartStatus.textContent = "Live API results";
-    setPanelsState("ready");
-  } catch (error) {
-    console.error(error);
-    setPanelsState("error", normalizeError(error));
-    refs.chartStatus.textContent = "Simulation unavailable";
-  } finally {
-    refs.runButton.disabled = false;
-    updateUrl();
+  if (requestId !== state.requestId) {
+    return;
   }
+
+  const failures = results.filter((result) => !result.ok);
+  if (failures.length === 0) {
+    refs.chartStatus.textContent = "Live API results";
+  } else {
+    failures.forEach((result) => console.error(result.error));
+    refs.chartStatus.textContent = "Simulation unavailable";
+  }
+
+  refs.runButton.disabled = false;
+  updateUrl();
 }
 
 /**
@@ -176,15 +184,35 @@ async function runSimulation() {
  */
 function setPanelsState(status, message = "") {
   Object.values(refs.panels).forEach((panel) => {
-    panel.skeleton.hidden = status !== "loading";
-    panel.error.hidden = status !== "error";
-    panel.plot.hidden = status !== "ready";
     panel.shell.dataset.loading = status === "loading" ? "true" : "false";
-    const detail = panel.error.querySelector(".chart-error-detail");
-    if (detail && status === "error") {
-      detail.textContent = message;
-    }
+    applyViewState(panel, status, message);
   });
+}
+
+/**
+ * @param {"distribution" | "curve" | "frontier"} panelKey
+ * @param {number} requestId
+ * @param {() => Promise<any>} load
+ * @param {(data: any) => void} render
+ */
+async function loadPanel(panelKey, requestId, load, render) {
+  try {
+    const data = await load();
+    if (requestId !== state.requestId) {
+      return { ok: false, stale: true };
+    }
+    render(data);
+    refs.panels[panelKey].shell.dataset.loading = "false";
+    applyViewState(refs.panels[panelKey], "ready");
+    return { ok: true };
+  } catch (error) {
+    if (requestId !== state.requestId) {
+      return { ok: false, stale: true };
+    }
+    refs.panels[panelKey].shell.dataset.loading = "false";
+    applyViewState(refs.panels[panelKey], "error", normalizeError(error));
+    return { ok: false, error };
+  }
 }
 
 /**
@@ -315,6 +343,9 @@ function normalizeError(error) {
   if (error instanceof ApiError) {
     if (error.kind === "timeout") {
       return "The live API timed out after 15 seconds.";
+    }
+    if (error.kind === "validation") {
+      return "The simulation request was rejected by the API.";
     }
     if (error.kind === "http" && error.status) {
       return `The simulation API returned HTTP ${error.status}.`;
