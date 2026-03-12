@@ -185,7 +185,7 @@ async function runSimulation() {
     refs.chartStatus.textContent = "Live API results";
   } else {
     failures.forEach((result) => console.error(result.error));
-    refs.chartStatus.textContent = "Simulation unavailable";
+    refs.chartStatus.textContent = summarizeFailures(failures);
   }
 
   refs.runButton.disabled = false;
@@ -638,6 +638,26 @@ function formatStageErrorDetail(error) {
     : "";
   const cause = error.details?.cause instanceof Error ? ` cause=${error.details.cause.message}` : "";
   return `${error.message}${panel}${missing}${cause}`.trim();
+}
+
+function summarizeFailures(failures) {
+  const stages = new Set();
+  let hasApiFailure = false;
+  for (const failure of failures) {
+    const error = failure.error;
+    if (isStageError(error)) {
+      stages.add(error.kind);
+    } else if (error instanceof ApiError) {
+      hasApiFailure = true;
+    }
+  }
+  if (stages.size > 0) {
+    return `Chart ${Array.from(stages).join("/")} issue`;
+  }
+  if (hasApiFailure) {
+    return "Simulation API issue";
+  }
+  return "Simulation unavailable";
 }
 
 init();
