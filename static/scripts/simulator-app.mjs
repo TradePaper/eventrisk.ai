@@ -441,17 +441,29 @@ function normalizeError(error) {
       if (error.kind === "timeout") {
         return formatErrorDetail(error, "The live API timed out after 15 seconds.");
       }
+      if (error.kind === "parse") {
+        return formatErrorDetail(error, "Simulation returned unexpected data.");
+      }
       if (error.kind === "validation") {
-        return formatErrorDetail(error, "The simulation request was rejected by the API.");
+        return formatErrorDetail(error, "Simulation returned unexpected data.");
       }
       if (error.kind === "http" && error.status) {
         return formatErrorDetail(error, `The simulation API returned HTTP ${error.status}.`);
       }
       return formatErrorDetail(error, error.message);
     }
-    return "Could not reach simulation server.";
+    if (error.kind === "network" || error.kind === "timeout") {
+      return "Could not reach simulation server.";
+    }
+    if (error.kind === "parse" || error.kind === "validation") {
+      return "Simulation returned unexpected data.";
+    }
+    if (error.kind === "http") {
+      return "Simulation server returned an error.";
+    }
+    return "Could not render charts. Simulation data was received.";
   }
-  return "Could not reach simulation server.";
+  return "Could not render charts. Simulation data was received.";
 }
 
 refs.effectiveFractionValue.textContent = "—";
