@@ -49,7 +49,8 @@ class TestRedesignRoutes:
         assert "Internal Reprice" in text
         assert "Hybrid" in text
         assert "CVaR-95" in text
-        assert "Optimal Hedge Ratio" in text
+        assert "Effective Hedge %" in text
+        assert "Requested Hedge Fraction" in text
         assert "superbowl_v1" in text
         assert "id=\"btnBack\"" in text
         assert "id=\"btnNext\"" in text
@@ -93,7 +94,7 @@ class TestRedesignRoutes:
         assert 'const PRESETS = {' in js
         assert 'document.addEventListener("DOMContentLoaded", bootPaper, { once: true });' in js
         assert 'typeof window.Plotly?.react !== "function"' in js
-        assert 'requestAnimationFrame(() => renderFigures(data));' in js
+        assert "void renderFigures(data);" in js
 
     def test_paper_route_includes_plotly_and_figure_mounts(self):
         resp = client.get("/paper")

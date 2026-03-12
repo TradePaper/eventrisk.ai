@@ -168,6 +168,7 @@ export function createApiClient(options = {}) {
           n_points: 7,
           true_probability: params.trueProbability ?? 0.55,
           prediction_market_price: params.marketPrice ?? 0.52,
+          requested_hedge_fraction: params.hedgeFraction,
           liquidity: {
             available_liquidity: params.liquidity,
             participation_rate: 1,

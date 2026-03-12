@@ -1,6 +1,7 @@
 // @ts-check
 
 import { ApiError, createApiClient } from "/static/scripts/api-client.mjs";
+import { buildRegimeCurves } from "/static/scripts/hedge-capacity.mjs";
 import { applyViewState } from "/static/scripts/view-state.mjs";
 
 const LIVE_API_BASE_URL = "https://market-hedge-simulator.replit.app";
@@ -10,26 +11,41 @@ const STRATEGY_LABELS = {
   hybrid: "Hybrid",
 };
 const CURVE_METRICS = {
-  cvar: { label: "CVaR-95", accessor: (point) => Math.abs(point.cvar), axis: "Expected worst-case loss" },
-  max_loss: { label: "Max Loss", accessor: (point) => Math.abs(point.max_loss), axis: "Max loss" },
-  hedge_ratio: { label: "Optimal Hedge Ratio", accessor: (point) => point.hedge_ratio * 100, axis: "Optimal hedge ratio (%)" },
+  effective_fraction: {
+    label: "Effective Hedge %",
+    accessor: (point) => point.effective_hedge_fraction * 100,
+    axis: "Effective hedge fraction (%)",
+    hover: ".1f",
+  },
+  effective_notional: {
+    label: "Effective Hedge Notional",
+    accessor: (point) => point.effective_hedge_notional,
+    axis: "Effective hedge notional ($)",
+    hover: "$,.0f",
+  },
+  hedge_gap: {
+    label: "Unfilled Hedge Gap",
+    accessor: (point) => point.requested_hedge_notional - point.effective_hedge_notional,
+    axis: "Requested minus effective hedge ($)",
+    hover: "$,.0f",
+  },
 };
 const BASE_DISTRIBUTION_INPUT = {
-  liability: 2000,
+  liability: 136_000_000,
   base_input: {
-    stake: 100,
-    american_odds: -110,
-    true_win_prob: 0.54,
-    fill_probability: 0.85,
+    stake: 8_000_000,
+    american_odds: -122,
+    true_win_prob: 0.55,
+    fill_probability: 1,
     n_paths: 500,
     seed: "superbowl_v1",
-    slippage_bps: 8,
+    slippage_bps: 5,
     fee_bps: 2,
-    latency_bps: 3,
+    latency_bps: 1,
     liquidity: {
-      available_liquidity: 1_000_000,
-      participation_rate: 0.2,
-      impact_factor: 0.6,
+      available_liquidity: 20_000_000,
+      participation_rate: 1,
+      impact_factor: 0.01,
       depth_exponent: 1.0,
     },
     internal_reprice: {
@@ -42,19 +58,20 @@ const BASE_DISTRIBUTION_INPUT = {
   },
 };
 const CURVE_PAYLOAD = {
-  liability_min: 500,
-  liability_max: 8_000,
-  n_points: 5,
-  true_probability: 0.54,
-  prediction_market_price: 0.52,
-  fill_probability: 0.85,
+  liability_min: 20_000_000,
+  liability_max: 140_000_000,
+  n_points: 7,
+  true_probability: 0.55,
+  prediction_market_price: 0.55,
+  requested_hedge_fraction: 0.60,
+  fill_probability: 1.0,
   objective: "min_cvar",
   seed: "superbowl_v1",
   n_paths: 500,
   liquidity: {
-    available_liquidity: 1_000_000,
-    participation_rate: 0.2,
-    impact_factor: 0.6,
+    available_liquidity: 20_000_000,
+    participation_rate: 1.0,
+    impact_factor: 0.01,
     depth_exponent: 1.0,
   },
 };
@@ -65,7 +82,7 @@ const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debug
 const state = {
   activeStep: 0,
   strategy: "external_hedge",
-  curveMetric: "cvar",
+  curveMetric: "effective_fraction",
   cache: new Map(),
   hasStaticFallback: false,
   baselineRequestId: 0,
@@ -304,7 +321,7 @@ async function fetchStep2(strategy) {
     strategy,
     unhedged: unhedgedPayload.unhedged,
     hedged: hedgedPayload.hedged,
-    hedge_fraction: hedgedPayload.hedge_fraction,
+    requested_hedge_fraction: hedgedPayload.requested_hedge_fraction,
   };
 }
 
@@ -374,45 +391,41 @@ function renderStep2(data) {
 
 function renderStep3(data) {
   const metric = CURVE_METRICS[state.curveMetric];
-  const points = data.curve_points;
+  const regimes = data.liquidity_regimes ?? [];
+  const medium = regimes.find((regime) => regime.id === "medium") ?? { curve_points: data.curve_points };
+  const points = medium.curve_points;
   const lastPoint = points[points.length - 1];
   const bindingCount = points.filter((point) => point.liquidity_binding).length;
 
-  refs.metrics.step3MetricValue.textContent =
-    state.curveMetric === "hedge_ratio"
-      ? `${(lastPoint.hedge_ratio * 100).toFixed(0)}%`
-      : formatCurrency(metric.accessor(lastPoint));
-  refs.metrics.step3HedgeRatio.textContent = `${(lastPoint.hedge_ratio * 100).toFixed(0)}%`;
+  refs.metrics.step3MetricValue.textContent = formatMetricValue(metric, metric.accessor(lastPoint));
+  refs.metrics.step3HedgeRatio.textContent = `${(lastPoint.requested_hedge_fraction * 100).toFixed(0)}%`;
   refs.metrics.step3BindingCount.textContent = `${bindingCount}/${points.length}`;
-
-  const yValues = points.map((point) => metric.accessor(point));
-  const xValues = points.map((point) => point.liability);
-  const markerColors = points.map((point) =>
-    point.liquidity_binding ? "#e8ae52" : state.strategy === "external_hedge" ? "#5bc6c4" : "#8ab4ff",
-  );
-  const zoneShapes = buildZoneShapes(yValues);
 
   window.Plotly.react(
     refs.plots.step3,
-    [
-      {
-        x: xValues,
-        y: yValues,
+    regimes.map((regime) => ({
+        x: regime.curve_points.map((point) => point.liability),
+        y: regime.curve_points.map((point) => metric.accessor(point)),
         type: "scatter",
         mode: "lines+markers",
-        name: metric.label,
-        line: { color: "#5bc6c4", width: 3 },
-        marker: { size: 9, color: markerColors, line: { width: 1, color: "#0a0e1a" } },
+        name: regime.label,
+        line: {
+          color: regime.id === "low" ? "#e8ae52" : regime.id === "medium" ? "#5bc6c4" : "#8ab4ff",
+          width: regime.id === "medium" ? 3 : 2,
+        },
+        marker: {
+          size: regime.id === "medium" ? 9 : 7,
+          color: regime.curve_points.map((point) => (point.liquidity_binding ? "#e8ae52" : "#5bc6c4")),
+          line: { width: 1, color: "#0a0e1a" },
+        },
         hovertemplate:
           "Liability: %{x:$,.0f}<br>" +
-          `${metric.label}: %{y:${state.curveMetric === "hedge_ratio" ? ".1f" : "$,.2f"}}<br>` +
-          "Optimal hedge: %{customdata:.0%}<extra></extra>",
-        customdata: points.map((point) => point.hedge_ratio),
-      },
-    ],
+          `${metric.label}: %{y:${metric.hover}}<br>` +
+          "Requested hedge: %{customdata:.0%}<extra></extra>",
+        customdata: regime.curve_points.map((point) => point.requested_hedge_fraction),
+      })),
     {
-      ...baseLayout("Liquidity-Constrained Risk Transfer Curve", "Sportsbook liability", metric.axis),
-      shapes: zoneShapes,
+      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability", metric.axis),
       annotations: [
         zoneLabel("Meaningful hedging", 0.16),
         zoneLabel("Partial hedging", 0.5),
@@ -420,7 +433,7 @@ function renderStep3(data) {
       ],
       yaxis: {
         title: metric.axis,
-        tickformat: state.curveMetric === "hedge_ratio" ? ",.0f" : "$,.0f",
+        tickformat: state.curveMetric === "effective_fraction" ? ",.0f" : "$,.0f",
         gridcolor: "rgba(156, 171, 205, 0.1)",
         zeroline: false,
       },
@@ -551,29 +564,23 @@ function renderStaticStep2(preset) {
 
   refs.metrics.step2UnhedgedCvar.textContent = formatCurrencyMillions(preset.step2.cvar95_unhedged_m);
   refs.metrics.step2HedgedCvar.textContent = formatCurrencyMillions(preset.step2.cvar95_hedged_m);
-  refs.metrics.step2UnhedgedMax.textContent = formatCurrencyMillions(preset.step1.max_loss_m);
-  refs.metrics.step2HedgedMax.textContent = formatCurrencyMillions(preset.step2.cvar95_hedged_m);
+  refs.metrics.step2UnhedgedMax.textContent = formatCurrencyMillions(preset.step2.max_loss_unhedged_m);
+  refs.metrics.step2HedgedMax.textContent = formatCurrencyMillions(preset.step2.max_loss_hedged_m);
   refs.metrics.step2TailReduction.textContent = `${preset.step2.tail_reduction_pct.toFixed(1)}%`;
   setStepState("step2", "ready");
 }
 
 function renderStaticStep3(preset) {
-  const points = preset.step3.points;
   const metric = CURVE_METRICS[state.curveMetric];
-  const normalizedPoints = points.map((point) => ({
-    liability: point.liability_m,
-    cvar: -point.tail_risk_hedged_m * 1_000_000,
-    max_loss: -point.tail_risk_unhedged_m * 1_000_000,
-    hedge_ratio: Math.min(1, point.hedge_utilization),
-    liquidity_binding: point.feasibility === "red",
-  }));
-  renderPresetCurve(normalizedPoints, metric);
-  refs.metrics.step3MetricValue.textContent =
-    state.curveMetric === "hedge_ratio"
-      ? `${Math.round(normalizedPoints[normalizedPoints.length - 1].hedge_ratio * 100)}%`
-      : formatCurrencyMillions(-metric.accessor(normalizedPoints[normalizedPoints.length - 1]) / 1_000_000);
-  refs.metrics.step3HedgeRatio.textContent = `${Math.round(normalizedPoints[normalizedPoints.length - 1].hedge_ratio * 100)}%`;
-  refs.metrics.step3BindingCount.textContent = `${points.filter((point) => point.feasibility === "red").length}/${points.length}`;
+  const liabilities = preset.step3.liabilities_m.map((value) => value * 1_000_000);
+  const regimes = buildRegimeCurves(liabilities, preset.meta.target_hedge_ratio, preset.meta.liquidity_usd);
+  renderPresetCurve(regimes, metric);
+  const medium = regimes.find((regime) => regime.id === "medium");
+  const points = medium ? medium.curve_points : [];
+  const lastPoint = points[points.length - 1];
+  refs.metrics.step3MetricValue.textContent = formatMetricValue(metric, metric.accessor(lastPoint));
+  refs.metrics.step3HedgeRatio.textContent = `${Math.round(lastPoint.requested_hedge_fraction * 100)}%`;
+  refs.metrics.step3BindingCount.textContent = `${points.filter((point) => point.liquidity_binding).length}/${points.length}`;
   setStepState("step3", "ready");
 }
 
@@ -631,41 +638,41 @@ function renderStaticDistribution({ host, title, bins, primaryName, primaryValue
   );
 }
 
-function renderPresetCurve(points, metric) {
-  const yValues = points.map((point) => Math.abs(metric.accessor(point)) / (state.curveMetric === "hedge_ratio" ? 1 : 1_000_000));
-  const xValues = points.map((point) => point.liability);
-  const markerColors = points.map((point) => (point.liquidity_binding ? "#e8ae52" : "#5bc6c4"));
-  const zoneShapes = buildZoneShapes(yValues);
-
+function renderPresetCurve(regimes, metric) {
   window.Plotly.react(
     refs.plots.step3,
-    [
-      {
-        x: xValues,
-        y: yValues,
+    regimes.map((regime) => ({
+        x: regime.curve_points.map((point) => point.liability / 1_000_000),
+        y: regime.curve_points.map((point) =>
+          state.curveMetric === "effective_fraction" ? metric.accessor(point) : metric.accessor(point) / 1_000_000),
         type: "scatter",
         mode: "lines+markers",
-        name: metric.label,
-        line: { color: "#5bc6c4", width: 3 },
-        marker: { size: 9, color: markerColors, line: { width: 1, color: "#0a0e1a" } },
+        name: regime.label,
+        line: {
+          color: regime.id === "low" ? "#e8ae52" : regime.id === "medium" ? "#5bc6c4" : "#8ab4ff",
+          width: regime.id === "medium" ? 3 : 2,
+        },
+        marker: {
+          size: 9,
+          color: regime.curve_points.map((point) => (point.liquidity_binding ? "#e8ae52" : "#5bc6c4")),
+          line: { width: 1, color: "#0a0e1a" },
+        },
         hovertemplate:
           "Liability: %{x:.0f}M<br>" +
-          `${metric.label}: %{y:${state.curveMetric === "hedge_ratio" ? ".1f" : ".1f"}}${state.curveMetric === "hedge_ratio" ? "%" : "M"}<br>` +
-          "Optimal hedge: %{customdata:.0%}<extra></extra>",
-        customdata: points.map((point) => point.hedge_ratio),
-      },
-    ],
+          `${metric.label}: %{y:${state.curveMetric === "effective_fraction" ? ".1f" : ".1f"}}${state.curveMetric === "effective_fraction" ? "%" : "M"}<br>` +
+          "Requested hedge: %{customdata:.0%}<extra></extra>",
+        customdata: regime.curve_points.map((point) => point.requested_hedge_fraction),
+      })),
     {
-      ...baseLayout("Liquidity-Constrained Risk Transfer Curve", "Sportsbook liability (USD, millions)", state.curveMetric === "hedge_ratio" ? "Optimal hedge ratio (%)" : `${metric.label} (USD, millions)`),
-      shapes: zoneShapes,
+      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability (USD, millions)", state.curveMetric === "effective_fraction" ? "Effective hedge fraction (%)" : `${metric.label} (USD, millions)`),
       annotations: [
         zoneLabel("Meaningful hedging", 0.16),
         zoneLabel("Partial hedging", 0.5),
         zoneLabel("No effective hedging", 0.84),
       ],
       yaxis: {
-        title: state.curveMetric === "hedge_ratio" ? "Optimal hedge ratio (%)" : `${metric.label} (USD, millions)`,
-        tickformat: state.curveMetric === "hedge_ratio" ? ",.0f" : ",.1f",
+        title: state.curveMetric === "effective_fraction" ? "Effective hedge fraction (%)" : `${metric.label} (USD, millions)`,
+        tickformat: state.curveMetric === "effective_fraction" ? ",.0f" : ",.1f",
         gridcolor: "rgba(156, 171, 205, 0.1)",
         zeroline: false,
       },
@@ -871,4 +878,11 @@ function normalizeError(error) {
     return error.message;
   }
   return "Unable to load live simulation data.";
+}
+
+function formatMetricValue(metric, value) {
+  if (metric === CURVE_METRICS.effective_fraction) {
+    return `${value.toFixed(0)}%`;
+  }
+  return formatCurrency(value);
 }

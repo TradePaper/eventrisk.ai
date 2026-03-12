@@ -76,6 +76,8 @@ def build_risk_transfer_curve(
             RiskTransferPoint(
                 liability=liability,
                 optimal_hedge_ratio=metrics.optimal_hedge_ratio,
+                requested_hedge_fraction=metrics.requested_hedge_fraction,
+                effective_hedge_fraction=metrics.effective_hedge_fraction,
                 ev=metrics.ev,
                 cvar_95=metrics.cvar_95,
                 max_loss=metrics.max_loss,

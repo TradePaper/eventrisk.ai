@@ -393,7 +393,18 @@ class TestDistributionEndpoint:
     def test_response_has_correct_top_level_keys(self):
         client = self._client()
         r = client.post("/api/risk-transfer/distribution", json=self._payload()).json()
-        for key in ("strategy", "liability", "hedge_fraction", "n_paths", "unhedged", "hedged"):
+        for key in (
+            "strategy",
+            "liability",
+            "requested_hedge_fraction",
+            "effective_hedge_fraction",
+            "requested_hedge_notional",
+            "effective_hedge_notional",
+            "liquidity_binding",
+            "n_paths",
+            "unhedged",
+            "hedged",
+        ):
             assert key in r, f"Missing key: {key}"
 
     def test_histogram_keys_present(self):
@@ -546,7 +557,18 @@ class TestInteractiveV3Endpoint:
         client = self._client()
         r = client.post("/api/risk-transfer/interactive", json=self._payload()).json()
         pt = r["curve_points"][0]
-        for key in ("liability", "hedge_ratio", "ev", "cvar", "max_loss", "liquidity_binding"):
+        for key in (
+            "liability",
+            "requested_hedge_fraction",
+            "effective_hedge_fraction",
+            "requested_hedge_notional",
+            "effective_hedge_notional",
+            "optimal_hedge_ratio",
+            "ev",
+            "cvar",
+            "max_loss",
+            "liquidity_binding",
+        ):
             assert key in pt, f"Missing curve_point key: {key}"
 
     def test_liquidity_cap_present_when_liquidity_given(self):
@@ -592,7 +614,8 @@ class TestInteractiveV3Endpoint:
         r2 = client.post("/api/risk-transfer/interactive", json=payload).json()
         for p1, p2 in zip(r1["curve_points"], r2["curve_points"]):
             assert p1["ev"]         == p2["ev"]
-            assert p1["hedge_ratio"]== p2["hedge_ratio"]
+            assert p1["effective_hedge_fraction"] == p2["effective_hedge_fraction"]
+            assert p1["requested_hedge_fraction"] == p2["requested_hedge_fraction"]
 
     def test_invalid_strategy_returns_400(self):
         client = self._client()

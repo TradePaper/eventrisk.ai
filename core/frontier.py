@@ -25,9 +25,11 @@ def _frontier_for_liquidity(base_input: SimulationInputV12, liquidity: Liquidity
         ewcl_hedged = _ewcl(hedged_metrics)
         rows.append(
             {
-                "hedge_ratio": float(hedge_ratio),
-                "hedge_size": float(hedge_ratio * base_input.liability),
-                "liquidity_used": float(hedged_metrics.hedge_utilization),
+                "requested_hedge_fraction": float(hedge_ratio),
+                "effective_hedge_fraction": float(hedged_metrics.effective_hedge_fraction),
+                "requested_hedge_notional": float(hedge_ratio * base_input.liability),
+                "effective_hedge_notional": float(hedged_metrics.effective_hedge_notional),
+                "liquidity_binding": bool(hedged_metrics.liquidity_binding),
                 "ev_sacrificed": float(unhedged_metrics.ev - hedged_metrics.ev),
                 "tail_reduction": float(ewcl_unhedged - ewcl_hedged),
             }
@@ -37,13 +39,13 @@ def _frontier_for_liquidity(base_input: SimulationInputV12, liquidity: Liquidity
 
 def build_efficiency_frontier(base_input: SimulationInputV12) -> Dict[str, List[Dict[str, float]]]:
     shallow = LiquidityModel(
-        available_liquidity=base_input.liquidity.available_liquidity,
-        participation_rate=0.35,
-        impact_factor=0.16,
-        depth_exponent=1.2,
+        available_liquidity=base_input.liquidity.available_liquidity * 0.5,
+        participation_rate=1.0,
+        impact_factor=0.18,
+        depth_exponent=1.25,
     )
     deep = LiquidityModel(
-        available_liquidity=base_input.liquidity.available_liquidity,
+        available_liquidity=base_input.liquidity.available_liquidity * 3.0,
         participation_rate=1.0,
         impact_factor=0.02,
         depth_exponent=1.0,
@@ -51,12 +53,4 @@ def build_efficiency_frontier(base_input: SimulationInputV12) -> Dict[str, List[
 
     shallow_rows = _frontier_for_liquidity(base_input, shallow)
     deep_rows = _frontier_for_liquidity(base_input, deep)
-
-    # Keep "deep" on/above "shallow" for Figure 4.
-    adjusted_deep = []
-    for s, d in zip(shallow_rows, deep_rows):
-        d2 = dict(d)
-        d2["tail_reduction"] = max(float(d["tail_reduction"]), float(s["tail_reduction"]))
-        adjusted_deep.append(d2)
-
-    return {"shallow": shallow_rows, "deep": adjusted_deep}
+    return {"shallow": shallow_rows, "deep": deep_rows}

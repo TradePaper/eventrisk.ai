@@ -33,6 +33,7 @@
   },
   "step3": {
     "title": "Figure 3 — Liquidity-Constrained Risk Transfer Curve",
+    "liabilities_m": [30,60,90,120,150],
     "points": [
       {"liability_m": 30, "tail_risk_unhedged_m": 18.5, "tail_risk_hedged_m": 12.0, "hedge_utilization": 0.24, "feasibility": "green"},
       {"liability_m": 60, "tail_risk_unhedged_m": 36.8, "tail_risk_hedged_m": 24.0, "hedge_utilization": 0.37, "feasibility": "green"},

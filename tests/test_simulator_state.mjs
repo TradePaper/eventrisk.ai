@@ -183,7 +183,8 @@ const suites = [
 
     const pt = body.curve_points[0];
     assert("liability"        in pt,   "curve_point has liability");
-    assert("hedge_ratio"      in pt,   "curve_point has hedge_ratio");
+    assert("requested_hedge_fraction" in pt, "curve_point has requested hedge fraction");
+    assert("effective_hedge_fraction" in pt, "curve_point has effective hedge fraction");
     assert("ev"               in pt,   "curve_point has ev");
     assert("cvar"             in pt,   "curve_point has cvar");
     assert("max_loss"         in pt,   "curve_point has max_loss");

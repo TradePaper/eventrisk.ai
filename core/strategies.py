@@ -62,6 +62,7 @@ def _liquidity_params(inp: SimulationInputV12, requested_hedge: float):
 def _build_metrics(
     pnl: np.ndarray,
     hedge_fraction: float,
+    liability: float,
     eff_h: float,
     utilization: float,
 ) -> StrategyMetrics:
@@ -73,8 +74,11 @@ def _build_metrics(
         max_loss=float(pnl.min()),
         cvar_95=_cvar(pnl.tolist(), alpha=0.95),
         optimal_hedge_ratio=hedge_fraction,
+        requested_hedge_fraction=hedge_fraction,
+        effective_hedge_fraction=eff_h / max(liability, 1e-9),
         effective_hedge_notional=eff_h,
         hedge_utilization=utilization,
+        liquidity_binding=eff_h + 1e-9 < max(0.0, hedge_fraction * liability),
     )
 
 
@@ -112,7 +116,7 @@ def simulate_external_hedge(inp: SimulationInputV12) -> StrategyMetrics:
         (inp.stake - liability) + eff_hedges - premiums,
         inp.stake - premiums,
     )
-    return _build_metrics(pnl, inp.hedge_fraction, eff_h, utilization)
+    return _build_metrics(pnl, inp.hedge_fraction, liability, eff_h, utilization)
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +150,7 @@ def simulate_internal_reprice(inp: SimulationInputV12) -> StrategyMetrics:
         effective_handle = inp.stake
 
     pnl = np.where(yes, effective_handle - liability, effective_handle)
-    return _build_metrics(pnl, inp.hedge_fraction, 0.0, 0.0)
+    return _build_metrics(pnl, inp.hedge_fraction, liability, 0.0, 0.0)
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +195,7 @@ def simulate_hybrid(inp: SimulationInputV12) -> StrategyMetrics:
         effective_handle - liability + eff_hedges - premiums,
         effective_handle - premiums,
     )
-    return _build_metrics(pnl, inp.hedge_fraction, eff_h, utilization)
+    return _build_metrics(pnl, inp.hedge_fraction, liability, eff_h, utilization)
 
 
 # ---------------------------------------------------------------------------

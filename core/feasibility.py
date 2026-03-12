@@ -1,12 +1,6 @@
 from typing import Dict, List
 
-
-def classify_feasibility(h_eff: float) -> str:
-    if h_eff < 0.10:
-        return "no_effective"
-    if h_eff < 0.40:
-        return "partial"
-    return "meaningful"
+from core.paper_math import classify_feasibility, effective_hedge_fraction
 
 
 def build_feasibility_map(target_hedge_ratio: float) -> Dict[str, List]:
@@ -22,7 +16,12 @@ def build_feasibility_map(target_hedge_ratio: float) -> Dict[str, List]:
         h_eff_row: List[float] = []
         label_row: List[str] = []
         for l in liabilities:
-            h_eff = min(target_hedge_ratio, q / l)
+            h_eff = effective_hedge_fraction(
+                liability=l,
+                requested_hedge_fraction=target_hedge_ratio,
+                available_liquidity=q,
+                participation_rate=1.0,
+            )
             region = classify_feasibility(h_eff)
             region_code = 0 if region == "no_effective" else (1 if region == "partial" else 2)
             region_row.append(region_code)

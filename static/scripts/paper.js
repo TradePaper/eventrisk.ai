@@ -1,3 +1,5 @@
+import { buildRegimeCurves, classifyFeasibility, FEASIBILITY_THRESHOLDS } from "/static/scripts/hedge-capacity.mjs";
+
 const FIGURE_TITLES = [
   "Figure 0: Event Market Risk Transfer Mechanism",
   "Figure 1: Sportsbook Hedging Feasibility Map",
@@ -79,13 +81,13 @@ function buildCards(data) {
   cardsEls.forEach((el) => currentObserver.observe(el));
 }
 
-function renderFigures(data) {
+async function renderFigures(data) {
   renderFigure0(data);
   renderFigure1(data);
   renderFigure2(data);
   renderFigure3(data);
   renderFigure4(data);
-  renderFigure5(data);
+  await renderFigure5(data);
 }
 
 async function loadPreset(presetKey) {
@@ -98,7 +100,9 @@ async function loadPreset(presetKey) {
   stickyTitle.textContent = FIGURE_TITLES[0];
   stickyCaption.textContent = `Preset: ${data.name} · Static figure set`;
   buildCards(data);
-  requestAnimationFrame(() => renderFigures(data));
+  requestAnimationFrame(() => {
+    void renderFigures(data);
+  });
 }
 
 function bootPaper() {
@@ -124,7 +128,11 @@ if (document.readyState === "loading") {
 
 function renderFigure0(data) {
   const plotEl = document.getElementById("paperFigure1");
-  const lastPoint = data.step3.points[data.step3.points.length - 1];
+  const liabilities = data.step3.liabilities_m.map((value) => value * 1_000_000);
+  const mediumCurve = buildRegimeCurves(liabilities, data.meta.target_hedge_ratio, data.meta.liquidity_usd).find(
+    (regime) => regime.id === "medium",
+  );
+  const lastPoint = mediumCurve.curve_points[mediumCurve.curve_points.length - 1];
   // FLAG: the bundled preset data does not include the paper's original Figure 0 graphic,
   // so this renders a qualitative mechanism diagram using only shipped preset metadata.
   plotEl.innerHTML = `
@@ -143,8 +151,8 @@ function renderFigure0(data) {
       <div class="mechanism-arrow" aria-hidden="true">→</div>
       <div class="mechanism-node mechanism-node-accent">
         <span class="mechanism-label">Residual tail</span>
-        <strong>${formatUsdMillions(lastPoint.tail_risk_hedged_m)}</strong>
-        <small>${Math.round(lastPoint.hedge_utilization * 100)}% utilization at the largest liability point</small>
+        <strong>${Math.round(lastPoint.effective_hedge_fraction * 100)}% executable hedge</strong>
+        <small>${formatMillions(lastPoint.effective_hedge_notional / 1_000_000)} effective hedge at the largest liability point</small>
       </div>
     </div>
   `;
@@ -153,7 +161,7 @@ function renderFigure0(data) {
     metric("Event market", data.meta.event, `Seed ${data.meta.seed}`),
     metric("Book liability", formatMillions(data.meta.stake_usd / 1_000_000), `${formatCount(data.meta.simulation_count)} static simulations`),
     metric("Depth available", formatMillions(data.meta.liquidity_usd / 1_000_000), `${Math.round(data.meta.target_hedge_ratio * 100)}% hedge target`),
-    metric("Residual tail", formatUsdMillions(lastPoint.tail_risk_hedged_m), `${Math.round(lastPoint.hedge_utilization * 100)}% utilization at scale`),
+    metric("Executable hedge", `${Math.round(lastPoint.effective_hedge_fraction * 100)}%`, `${formatMillions(lastPoint.effective_hedge_notional / 1_000_000)} at scale`),
   ]);
   setCallout(1, "Figure 0 summarizes the mechanism: sportsbook downside is transferred into event-market liquidity until depth binds and residual tail risk remains on book.");
 }
@@ -177,11 +185,11 @@ function renderFigure1(data) {
       zmin: 0,
       zmax: 2,
       showscale: false,
-      hovertemplate: "Utilization %{y}%<br>Liability %{x}M<br>%{text}<extra></extra>",
+      hovertemplate: "Liquidity %{y}M<br>Liability %{x}M<br>%{text}<extra></extra>",
       text: heatmap.labels,
     }],
     {
-      ...baseLayout("Liability (USD, millions)", "Hedge utilization (%)"),
+      ...baseLayout("Liability (USD, millions)", "Available liquidity (USD, millions)"),
       margin: { l: 64, r: 26, t: 26, b: 56 },
       annotations: heatmap.annotations,
     },
@@ -192,55 +200,46 @@ function renderFigure1(data) {
     metric("Meaningful cells", String(heatmap.counts.green), "Green-zone feasibility"),
     metric("Partial cells", String(heatmap.counts.yellow), "Yellow-zone feasibility"),
     metric("Constrained cells", String(heatmap.counts.red), "Red-zone feasibility"),
-    metric("Thresholds", `${Math.round(data.step3.zones.green_max_utilization * 100)}% / ${Math.round(data.step3.zones.yellow_max_utilization * 100)}%`, "Green / yellow cutoffs"),
+    metric("Thresholds", `${Math.round(FEASIBILITY_THRESHOLDS.noEffectiveMax * 100)}% / ${Math.round(FEASIBILITY_THRESHOLDS.partialMax * 100)}%`, "No-effective / meaningful cutoffs"),
   ]);
-  setCallout(2, "Figure 1 uses the bundled liability ladder and utilization cutoffs to show where sportsbook hedging remains meaningful, partial, or fully constrained.");
+  setCallout(2, "Figure 1 and Figure 2 share the same model basis: feasibility regions are thresholded directly from the effective hedge fraction implied by finite market liquidity.");
 }
 
 function renderFigure2(data) {
   const plotEl = document.getElementById("paperFigure3");
-  const points = data.step3.points;
+  const liabilities = data.step3.liabilities_m.map((value) => value * 1_000_000);
+  const regimes = buildRegimeCurves(liabilities, data.meta.target_hedge_ratio, data.meta.liquidity_usd);
+  const requestedLine = regimes[1].curve_points.map((point) => point.requested_hedge_fraction * 100);
 
   window.Plotly.react(
     plotEl,
     [
       {
-        x: points.map((point) => point.liability_m),
-        y: points.map((point) => point.tail_risk_unhedged_m),
+        x: liabilities.map((liability) => liability / 1_000_000),
+        y: requestedLine,
         type: "scatter",
-        mode: "lines+markers",
-        name: "Unhedged EWCL",
-        line: { color: PAPER_COLORS.amber, width: 3 },
-        marker: { size: 8 },
+        mode: "lines",
+        name: "Requested Hedge %",
+        line: { color: PAPER_COLORS.ink, width: 2, dash: "dash" },
       },
-      {
-        x: points.map((point) => point.liability_m),
-        y: points.map((point) => point.tail_risk_hedged_m),
+      ...regimes.map((regime) => ({
+        x: regime.curve_points.map((point) => point.liability / 1_000_000),
+        y: regime.curve_points.map((point) => point.effective_hedge_fraction * 100),
         type: "scatter",
         mode: "lines+markers",
-        name: "Hedged EWCL",
-        line: { color: PAPER_COLORS.teal, width: 3 },
-        marker: { size: 8 },
-      },
-      {
-        x: points.map((point) => point.liability_m),
-        y: points.map((point) => point.hedge_utilization * 100),
-        type: "scatter",
-        mode: "lines+markers",
-        name: "Utilization",
-        yaxis: "y2",
-        line: { color: PAPER_COLORS.inkSoft, width: 2, dash: "dot" },
+        name: regime.label,
+        line: {
+          color: regime.id === "low" ? PAPER_COLORS.amber : regime.id === "medium" ? PAPER_COLORS.teal : PAPER_COLORS.green,
+          width: regime.id === "medium" ? 3 : 2,
+        },
         marker: { size: 7 },
-      },
+      })),
     ],
     {
-      ...baseLayout("Liability (USD, millions)", "EWCL (USD, millions)"),
+      ...baseLayout("Liability (USD, millions)", "Effective hedge fraction (%)"),
       legend: legendLayout(),
-      yaxis2: {
-        title: "Utilization (%)",
-        overlaying: "y",
-        side: "right",
-        gridcolor: "rgba(0,0,0,0)",
+      yaxis: {
+        title: "Effective hedge fraction (%)",
         color: PAPER_COLORS.inkSoft,
         ticksuffix: "%",
       },
@@ -248,14 +247,18 @@ function renderFigure2(data) {
     PLOT_CONFIG,
   );
 
-  const maxReduction = Math.max(...points.map((point) => point.tail_risk_unhedged_m - point.tail_risk_hedged_m));
+  const medium = regimes.find((regime) => regime.id === "medium");
+  const maxEffective = Math.max(...medium.curve_points.map((point) => point.effective_hedge_fraction * 100));
+  const point100 = medium.curve_points.reduce((best, point) =>
+    Math.abs(point.liability - 100_000_000) < Math.abs(best.liability - 100_000_000) ? point : best,
+  );
   setSummary(3, [
-    metric("Curve points", String(points.length), `${points[0].liability_m}M to ${points[points.length - 1].liability_m}M liability`),
-    metric("Peak reduction", formatUsdMillions(maxReduction), "Best static point improvement"),
-    metric("Zone ceiling", `${Math.round(data.step3.zones.yellow_max_utilization * 100)}%`, "Upper partial-feasibility threshold"),
-    metric("Max utilization", `${Math.round(points[points.length - 1].hedge_utilization * 100)}%`, "Final liability point"),
+    metric("Requested hedge", `${Math.round(data.meta.target_hedge_ratio * 100)}%`, "Canonical paper request"),
+    metric("100M medium depth", `${Math.round(point100.effective_hedge_fraction * 100)}%`, `${formatMillions(point100.effective_hedge_notional / 1_000_000)} executable`),
+    metric("Partial threshold", `${Math.round(FEASIBILITY_THRESHOLDS.partialMax * 100)}%`, "Shared Figure 1 / Figure 2 basis"),
+    metric("Medium regime ceiling", `${Math.round(maxEffective)}%`, "Largest liability point"),
   ]);
-  setCallout(3, "Figure 2 keeps the canonical risk-transfer curve in static form so each preset shows how liability growth pushes the hedge toward liquidity bounds.");
+  setCallout(3, "Figure 2 is the deterministic hedge-capacity curve from the paper definition: effective hedge fraction equals the minimum of requested hedge and available liquidity divided by liability.");
 }
 
 function renderFigure3(data) {
@@ -346,9 +349,9 @@ function renderFigure4(data) {
   setCallout(5, "Figure 4 overlays the bundled hedged and unhedged loss densities to show the exact left-tail compression created by the active preset hedge.");
 }
 
-function renderFigure5(data) {
+async function renderFigure5(data) {
   const plotEl = document.getElementById("paperFigure6");
-  const frontier = buildFrontierSeries(data);
+  const frontier = await fetchFrontierSeries(data);
   const shallowPeak = frontier.shallow[frontier.shallow.length - 1];
   const deepPeak = frontier.deep[frontier.deep.length - 1];
 
@@ -366,12 +369,12 @@ function renderFigure5(data) {
   );
 
   setSummary(6, [
-    metric("Shallow peak", formatUsdMillions(shallowPeak.tailReduction), "Higher slippage, lower depth"),
-    metric("Deep peak", formatUsdMillions(deepPeak.tailReduction), "More transfer before saturation"),
+    metric("Shallow peak", formatUsdMillions(shallowPeak.tailReduction), "Lower depth, smaller executable hedge"),
+    metric("Deep peak", formatUsdMillions(deepPeak.tailReduction), "More depth, larger tail compression"),
     metric("Frontier sweep", `${frontier.shallow.length} ratios`, "0% to 100% hedge ratio"),
-    metric("Base penalty", formatUsdMillions(Math.abs(data.step2.ev_hedged_m - data.step2.ev_unhedged_m)), "Used for static EV-cost scaling"),
+    metric("Deep dominance", deepPeak.tailReduction >= shallowPeak.tailReduction ? "Natural" : "Mixed", "Driven by calibrated liquidity, not post-processing"),
   ]);
-  setCallout(6, "Figure 5 preserves the existing static frontier construction so the paper view still shows the EV-versus-tail tradeoff without any new backend contract.");
+  setCallout(6, "Figure 5 now binds directly to the live frontier model so the paper page shows the same shallow-versus-deep relationship as the backend math.");
 }
 
 function frontierTrace(rows, name, color) {
@@ -387,50 +390,49 @@ function frontierTrace(rows, name, color) {
   };
 }
 
-function buildFrontierSeries(data) {
-  const basePenalty = Math.abs(data.step2.ev_hedged_m - data.step2.ev_unhedged_m);
-  const baseReduction = Math.abs(data.step2.cvar95_unhedged_m - data.step2.cvar95_hedged_m);
-  const ratios = [0, 0.15, 0.3, 0.45, 0.6, 0.75, 0.9, 1];
-
+async function fetchFrontierSeries(data) {
+  const response = await fetch("/api/tier2/frontier", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      liability: data.meta.stake_usd,
+      liquidity: data.meta.liquidity_usd,
+      true_probability: data.meta.true_probability,
+      market_price: data.meta.market_price,
+      target_hedge_ratio: data.meta.target_hedge_ratio,
+      simulation_count: Math.min(data.meta.simulation_count, 500),
+    }),
+  });
+  const payload = await response.json();
   return {
-    shallow: ratios.map((ratio) => ({
-      evSacrifice: round1(basePenalty * (0.52 + ratio * 1.06) * ratio),
-      tailReduction: round1(baseReduction * Math.pow(ratio, 0.78) * 0.82),
+    shallow: payload.frontiers.shallow.map((row) => ({
+      evSacrifice: row.ev_sacrificed / 1_000_000,
+      tailReduction: row.tail_reduction / 1_000_000,
     })),
-    deep: ratios.map((ratio) => ({
-      evSacrifice: round1(basePenalty * (0.34 + ratio * 0.82) * ratio),
-      tailReduction: round1(baseReduction * (1 - Math.pow(1 - ratio, 1.45)) * 1.06),
+    deep: payload.frontiers.deep.map((row) => ({
+      evSacrifice: row.ev_sacrificed / 1_000_000,
+      tailReduction: row.tail_reduction / 1_000_000,
     })),
   };
 }
 
 function buildFeasibilityHeatmap(data) {
-  const liabilities = data.step3.points.map((point) => point.liability_m);
-  const utilizationLevels = [20, 35, 50, 65, 80, 95];
-  const greenMax = Math.round(data.step3.zones.green_max_utilization * 100);
-  const yellowMax = Math.round(data.step3.zones.yellow_max_utilization * 100);
+  const liabilities = data.step3.liabilities_m;
+  const liquidities = [5, 10, 20, 40, 60, 80];
   const z = [];
   const labels = [];
   const counts = { green: 0, yellow: 0, red: 0 };
 
-  utilizationLevels.forEach((level) => {
+  liquidities.forEach((liquidity) => {
     const row = [];
     const labelRow = [];
-    liabilities.forEach((liability, index) => {
-      const point = data.step3.points[index];
-      const buffer = level - Math.round(point.hedge_utilization * 100);
-      let zone = "red";
-      let value = 0;
-      if (level <= greenMax && buffer <= 10) {
-        zone = "green";
-        value = 2;
-      } else if (level <= yellowMax && buffer <= 18) {
-        zone = "yellow";
-        value = 1;
-      }
+    liabilities.forEach((liability) => {
+      const effectiveFraction = Math.min(data.meta.target_hedge_ratio, liquidity / liability);
+      const zone = classifyFeasibility(effectiveFraction);
+      const value = zone === "meaningful" ? 2 : zone === "partial" ? 1 : 0;
       row.push(value);
-      labelRow.push(zone === "green" ? "Meaningful Hedging" : zone === "yellow" ? "Partial Hedging" : "Constrained");
-      counts[zone] += 1;
+      labelRow.push(zone === "meaningful" ? "Meaningful Hedging" : zone === "partial" ? "Partial Hedging" : "No Effective Hedging");
+      counts[zone === "meaningful" ? "green" : zone === "partial" ? "yellow" : "red"] += 1;
     });
     z.push(row);
     labels.push(labelRow);
@@ -438,13 +440,13 @@ function buildFeasibilityHeatmap(data) {
 
   return {
     x: liabilities,
-    y: utilizationLevels,
+    y: liquidities,
     z,
     labels,
     counts,
     annotations: [
-      axisNote(`Green <= ${greenMax}%`, 0.05),
-      axisNote(`Partial <= ${yellowMax}%`, 0.18),
+      axisNote(`Meaningful >= ${Math.round(FEASIBILITY_THRESHOLDS.partialMax * 100)}%`, 0.05),
+      axisNote(`Partial >= ${Math.round(FEASIBILITY_THRESHOLDS.noEffectiveMax * 100)}%`, 0.18),
     ],
   };
 }
