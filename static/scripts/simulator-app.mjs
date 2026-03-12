@@ -263,8 +263,14 @@ function renderDistribution(data) {
  * @param {any} data
  */
 function renderCurve(data) {
-  const curvePoints = Array.isArray(data?.curve_points) ? data.curve_points : [];
   const regimes = Array.isArray(data?.liquidity_regimes) ? data.liquidity_regimes : [];
+  const mediumRegime = regimes.find((regime) => regime.id === "medium") ?? regimes[0] ?? null;
+  const curvePoints =
+    Array.isArray(data?.curve_points) && data.curve_points.length > 0
+      ? data.curve_points
+      : Array.isArray(mediumRegime?.curve_points)
+        ? mediumRegime.curve_points
+        : [];
   const requested = curvePoints.map((point) => point.requestedHedgeFraction * 100);
   const liabilities = curvePoints.map((point) => point.liability);
   const mediumPoint =
@@ -380,17 +386,30 @@ function baseLayout(xTitle, yTitle) {
  */
 function normalizeError(error) {
   if (error instanceof ApiError) {
+    if (shouldDebugApi) {
+      if (error.kind === "timeout") {
+        return formatErrorDetail(error, "The live API timed out after 15 seconds.");
+      }
+      if (error.kind === "validation") {
+        return formatErrorDetail(error, "The simulation request was rejected by the API.");
+      }
+      if (error.kind === "http" && error.status) {
+        return formatErrorDetail(error, `The simulation API returned HTTP ${error.status}.`);
+      }
+      return formatErrorDetail(error, error.message);
+    }
     if (error.kind === "timeout") {
-      return formatErrorDetail(error, "The live API timed out after 15 seconds.");
+      return "Simulation unavailable. The request timed out.";
     }
     if (error.kind === "validation") {
-      return formatErrorDetail(error, "The simulation request was rejected by the API.");
+      return "Simulation unavailable for this scenario.";
     }
     if (error.kind === "http" && error.status) {
-      return formatErrorDetail(error, `The simulation API returned HTTP ${error.status}.`);
+      return "Simulation unavailable. Try again.";
     }
+    return "Simulation unavailable. Try again.";
   }
-  return error instanceof ApiError ? formatErrorDetail(error, error.message) : "The live API could not be reached.";
+  return "The live API could not be reached.";
 }
 
 refs.effectiveFractionValue.textContent = "—";

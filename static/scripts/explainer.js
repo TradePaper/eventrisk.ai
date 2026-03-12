@@ -1,8 +1,8 @@
 // @ts-check
 
-import { ApiError, createApiClient, readRuntimeConfig, shouldEnableApiDebug } from "/static/scripts/api-client.mjs";
 import { buildRegimeCurves } from "/static/scripts/hedge-capacity.mjs";
 import { applyViewState } from "/static/scripts/view-state.mjs";
+import { CANONICAL_EXPLAINER_SCENARIO, EXPLAINER_STATIC_DATA } from "/static/scripts/explainer-static-data.mjs";
 
 const STRATEGY_LABELS = {
   external_hedge: "External Hedge",
@@ -15,63 +15,9 @@ const CAPACITY_METRIC = {
   axis: "Hedgeable fraction of exposure (%)",
   hover: ".1f",
 };
-const BASE_DISTRIBUTION_INPUT = {
-  liability: 136_000_000,
-  base_input: {
-    stake: 8_000_000,
-    american_odds: -122,
-    true_win_prob: 0.55,
-    fill_probability: 1,
-    n_paths: 500,
-    seed: "superbowl_v1",
-    slippage_bps: 5,
-    fee_bps: 2,
-    latency_bps: 1,
-    liquidity: {
-      available_liquidity: 20_000_000,
-      participation_rate: 1,
-      impact_factor: 0.01,
-      depth_exponent: 1.0,
-    },
-    internal_reprice: {
-      enabled: true,
-      odds_move_sensitivity: 0.000002,
-      handle_retention_decay: 0.25,
-      min_prob: 0.01,
-      max_prob: 0.99,
-    },
-  },
-};
-const CURVE_PAYLOAD = {
-  liability_min: 20_000_000,
-  liability_max: 140_000_000,
-  n_points: 7,
-  true_probability: 0.55,
-  prediction_market_price: 0.55,
-  requested_hedge_fraction: 0.60,
-  fill_probability: 1.0,
-  objective: "min_cvar",
-  seed: "superbowl_v1",
-  n_paths: 500,
-  liquidity: {
-    available_liquidity: 20_000_000,
-    participation_rate: 1.0,
-    impact_factor: 0.01,
-    depth_exponent: 1.0,
-  },
-};
-const EXPLAINER_FALLBACK_PRESET = "/lib/presets/superbowl.json";
-
-const runtimeConfig = readRuntimeConfig();
-const client = createApiClient({ runtimeConfig });
-const shouldDebugApiBase = shouldEnableApiDebug(runtimeConfig);
 const state = {
   activeStep: 0,
   strategy: "external_hedge",
-  cache: new Map(),
-  hasStaticFallback: false,
-  baselineRequestId: 0,
-  strategyRequestId: 0,
 };
 
 const refs = {
@@ -117,14 +63,10 @@ init().catch((error) => {
 });
 
 async function init() {
-  if (shouldDebugApiBase) {
-    console.info("[explainer] resolved API base:", client.baseUrl, client.baseUrls);
-  }
   bindEvents();
   updateControlUi();
   resetMetricText();
-  await hydrateStaticFallback();
-  void hydrateExplainer();
+  renderStaticScenario(state.strategy);
 }
 
 function bindEvents() {
@@ -147,8 +89,7 @@ function bindEvents() {
 
       state.strategy = strategy;
       updateControlUi();
-      resetStepTwoThreeMetrics();
-      await hydrateStrategyViews(strategy, { forceRefresh: true });
+      renderStaticScenario(strategy);
     });
   });
 
@@ -178,261 +119,11 @@ function bindEvents() {
   window.addEventListener("resize", debounce(() => updateAllChartsFromCache(), 120));
 }
 
-async function hydrateExplainer() {
-  if (!state.hasStaticFallback) {
-    setStepState("step1", "loading");
-    setStepState("step2", "loading");
-    setStepState("step3", "loading");
-  }
-
-  await Promise.allSettled([hydrateBaseline(), hydrateStrategyViews(state.strategy, { forceRefresh: true })]);
-  updateControlUi();
-}
-
-async function hydrateStaticFallback() {
-  try {
-    const response = await fetch(EXPLAINER_FALLBACK_PRESET, { cache: "force-cache" });
-    if (!response.ok) {
-      throw new Error(`fallback preset HTTP ${response.status}`);
-    }
-    const preset = await response.json();
-    renderStaticStep1(preset);
-    renderStaticStep2(preset);
-    renderStaticStep3(preset);
-    state.hasStaticFallback = true;
-  } catch (error) {
-    console.warn("[explainer] static fallback unavailable", error);
-  }
-}
-
-async function hydrateBaseline() {
-  const requestId = ++state.baselineRequestId;
-  const cached = state.cache.get("step1:baseline");
-  if (cached) {
-    renderStep1(cached);
-    return cached;
-  }
-
-  try {
-    const payload = await fetchDistribution(0, "external_hedge");
-    if (requestId !== state.baselineRequestId) {
-      return null;
-    }
-    const step1Data = payload.unhedged;
-    state.cache.set("step1:baseline", step1Data);
-    renderStep1(step1Data);
-    return step1Data;
-  } catch (error) {
-    if (requestId === state.baselineRequestId && !state.hasStaticFallback) {
-      setStepState("step1", "error");
-    }
-    if (shouldDebugApiBase) {
-      console.warn("[explainer] live baseline refresh failed", error);
-    }
-    throw error;
-  }
-}
-
-function getStep2CacheKey(strategy) {
-  return `step2:${strategy}:${CURVE_PAYLOAD.seed}:${BASE_DISTRIBUTION_INPUT.liability}`;
-}
-
-function getStep3CacheKey(strategy) {
-  return `step3:${strategy}:${CURVE_PAYLOAD.seed}:${CURVE_PAYLOAD.liability_min}:${CURVE_PAYLOAD.liability_max}:${CURVE_PAYLOAD.n_points}`;
-}
-
-async function hydrateStrategyViews(strategy, options = {}) {
-  const requestId = ++state.strategyRequestId;
-  const forceRefresh = Boolean(options.forceRefresh);
-  const step2Key = getStep2CacheKey(strategy);
-  const step3Key = getStep3CacheKey(strategy);
-  const hasStep2Cache = state.cache.has(step2Key);
-  const hasStep3Cache = state.cache.has(step3Key);
-
-  if (hasStep2Cache) {
-    renderStep2(/** @type {any} */ (state.cache.get(step2Key)));
-  } else {
-    setStepState("step2", "loading");
-  }
-
-  if (hasStep3Cache) {
-    renderStep3(/** @type {any} */ (state.cache.get(step3Key)));
-  } else {
-    setStepState("step3", "loading");
-  }
-
-  const [step2Result, step3Result] = await Promise.allSettled([
-    !forceRefresh && hasStep2Cache ? Promise.resolve(state.cache.get(step2Key)) : fetchStep2(strategy),
-    !forceRefresh && hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy),
-  ]);
-
-  if (requestId !== state.strategyRequestId || strategy !== state.strategy) {
-    return;
-  }
-
-  if (step2Result.status === "fulfilled") {
-    state.cache.set(step2Key, step2Result.value);
-    renderStep2(step2Result.value);
-  } else {
-    if (shouldDebugApiBase) {
-      console.warn("[explainer] live Step 2 refresh failed", step2Result.reason);
-    }
-    if (!hasStep2Cache && !state.hasStaticFallback) {
-      setStepState("step2", "error");
-    }
-  }
-
-  if (step3Result.status === "fulfilled") {
-    state.cache.set(step3Key, step3Result.value);
-    renderStep3(step3Result.value);
-  } else {
-    if (shouldDebugApiBase) {
-      console.warn("[explainer] live Step 3 refresh failed", step3Result.reason);
-    }
-    if (!hasStep3Cache && !state.hasStaticFallback) {
-      setStepState("step3", "error");
-    }
-  }
-}
-
-async function fetchStep2(strategy) {
-  const [unhedgedPayload, hedgedPayload] = await Promise.all([
-    fetchDistribution(0, strategy),
-    fetchDistribution(0.5, strategy),
-  ]);
-
-  return {
-    strategy,
-    unhedged: unhedgedPayload.unhedged,
-    hedged: hedgedPayload.hedged,
-    requested_hedge_fraction: hedgedPayload.requested_hedge_fraction,
-  };
-}
-
-async function fetchStep3(strategy) {
-  return client.fetchJson("/api/risk-transfer/interactive", {
-    method: "POST",
-    body: JSON.stringify({
-      ...CURVE_PAYLOAD,
-      strategy,
-    }),
-  });
-}
-
-async function fetchDistribution(hedgeFraction, strategy) {
-  return client.fetchJson("/api/risk-transfer/distribution", {
-    method: "POST",
-    body: JSON.stringify({
-      strategy,
-      liability: BASE_DISTRIBUTION_INPUT.liability,
-      hedge_fraction: hedgeFraction,
-      base_input: BASE_DISTRIBUTION_INPUT.base_input,
-    }),
-  });
-}
-
-function renderStep1(data) {
-  renderHistogram({
-    host: refs.plots.step1,
-    title: "Unhedged P&L Distribution",
-    primaryName: "Unhedged",
-    primaryColor: "#e8ae52",
-    primary: data,
-    annotationLabel: "Tail exposure",
-    annotationValue: data.cvar_95,
-  });
-
-  refs.metrics.step1Ev.textContent = formatCurrency(data.ev);
-  refs.metrics.step1Cvar.textContent = formatCurrency(data.cvar_95);
-  refs.metrics.step1Max.textContent = formatCurrency(data.max_loss);
-  setStepState("step1", "ready");
-}
-
-function renderStep2(data) {
-  renderHistogram({
-    host: refs.plots.step2,
-    title: "Hedged vs. Unhedged Overlay",
-    primaryName: "Unhedged",
-    primaryColor: "#e8ae52",
-    primary: data.unhedged,
-    secondaryName: "Hedged",
-    secondaryColor: "#5bc6c4",
-    secondary: data.hedged,
-    annotationLabel: "CVaR-95 shift",
-    annotationValue: data.hedged.cvar_95,
-  });
-
-  const tailReduction =
-    ((data.unhedged.cvar_95 - data.hedged.cvar_95) / Math.max(Math.abs(data.unhedged.cvar_95), 1e-6)) * 100;
-
-  refs.metrics.step2UnhedgedCvar.textContent = formatCurrency(data.unhedged.cvar_95);
-  refs.metrics.step2HedgedCvar.textContent = formatCurrency(data.hedged.cvar_95);
-  refs.metrics.step2UnhedgedMax.textContent = formatCurrency(data.unhedged.max_loss);
-  refs.metrics.step2HedgedMax.textContent = formatCurrency(data.hedged.max_loss);
-  refs.metrics.step2TailReduction.textContent = `${tailReduction.toFixed(1)}%`;
-  setStepState("step2", "ready");
-}
-
-function renderStep3(data) {
-  const regimes = data.liquidity_regimes ?? [];
-  const medium = regimes.find((regime) => regime.id === "medium") ?? { curve_points: data.curve_points };
-  const points = medium.curve_points;
-  const lastPoint = points[points.length - 1];
-  const bindingCount = points.filter((point) => point.liquidity_binding).length;
-
-  refs.metrics.step3MetricValue.textContent = `${(lastPoint.requested_hedge_fraction * 100).toFixed(0)}%`;
-  refs.metrics.step3HedgeRatio.textContent = `${(lastPoint.effective_hedge_fraction * 100).toFixed(0)}%`;
-  refs.metrics.step3BindingCount.textContent = bindingCount > 0 ? `Yes (${bindingCount}/${points.length})` : "No";
-
-  window.Plotly.react(
-    refs.plots.step3,
-    regimes.map((regime) => ({
-        x: regime.curve_points.map((point) => point.liability),
-        y: regime.curve_points.map((point) => CAPACITY_METRIC.accessor(point)),
-        type: "scatter",
-        mode: "lines+markers",
-        name: regime.label,
-        line: {
-          color: regime.id === "low" ? "#e8ae52" : regime.id === "medium" ? "#5bc6c4" : "#8ab4ff",
-          width: regime.id === "medium" ? 3 : 2,
-        },
-        marker: {
-          size: regime.id === "medium" ? 9 : 7,
-          color: regime.curve_points.map((point) => (point.liquidity_binding ? "#e8ae52" : "#5bc6c4")),
-          line: { width: 1, color: "#0a0e1a" },
-        },
-        hovertemplate:
-          "Liability: %{x:$,.0f}<br>" +
-          `${CAPACITY_METRIC.label}: %{y:${CAPACITY_METRIC.hover}}%<br>` +
-          "Requested hedge: %{customdata[0]:.0%}<br>" +
-          "Effective hedge: %{customdata[1]:.0%}<extra></extra>",
-        customdata: regime.curve_points.map((point) => [point.requested_hedge_fraction, point.effective_hedge_fraction]),
-      })),
-    {
-      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability", CAPACITY_METRIC.axis),
-      annotations: [
-        zoneLabel("Meaningful hedging", 0.16),
-        zoneLabel("Partial hedging", 0.5),
-        zoneLabel("No effective hedging", 0.84),
-      ],
-      yaxis: {
-        title: CAPACITY_METRIC.axis,
-        tickformat: ",.0f",
-        gridcolor: "rgba(156, 171, 205, 0.1)",
-        zeroline: false,
-        range: [0, 100],
-      },
-      xaxis: {
-        title: "Sportsbook liability ($)",
-        tickformat: "$,.0f",
-        gridcolor: "rgba(156, 171, 205, 0.08)",
-        zeroline: false,
-      },
-    },
-    { displayModeBar: false, responsive: true },
-  );
-
-  setStepState("step3", "ready");
+function renderStaticScenario(strategy) {
+  const scenario = EXPLAINER_STATIC_DATA[strategy] ?? CANONICAL_EXPLAINER_SCENARIO;
+  renderStaticStep1(scenario);
+  renderStaticStep2(scenario);
+  renderStaticStep3(scenario);
 }
 
 function renderHistogram({ host, title, primaryName, primaryColor, primary, secondaryName, secondaryColor, secondary, annotationLabel, annotationValue }) {
@@ -702,23 +393,8 @@ function baseLayout(title, xTitle, yTitle) {
   };
 }
 
-function updateCurveCardFromCache() {
-  const data = state.cache.get(getStep3CacheKey(state.strategy));
-  if (data) {
-    renderStep3(data);
-    return true;
-  }
-  return false;
-}
-
 function updateAllChartsFromCache() {
-  const baseline = state.cache.get("step1:baseline");
-  const step2 = state.cache.get(getStep2CacheKey(state.strategy));
-  const step3 = state.cache.get(getStep3CacheKey(state.strategy));
-
-  if (baseline) renderStep1(baseline);
-  if (step2) renderStep2(step2);
-  if (step3) renderStep3(step3);
+  renderStaticScenario(state.strategy);
 }
 
 function setStepState(step, status) {
@@ -818,30 +494,6 @@ function resetMetricText() {
   });
 }
 
-function resetStepTwoThreeMetrics() {
-  for (const key of [
-    "step2UnhedgedCvar",
-    "step2HedgedCvar",
-    "step2UnhedgedMax",
-    "step2HedgedMax",
-    "step2TailReduction",
-    "step3MetricValue",
-    "step3HedgeRatio",
-    "step3BindingCount",
-  ]) {
-    refs.metrics[key].textContent = "—";
-  }
-}
-
-function formatCurrency(value) {
-  const formatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
-  });
-  return formatter.format(value);
-}
-
 function formatCurrencyMillions(value) {
   const sign = value < 0 ? "-" : "";
   return `${sign}$${Math.abs(value).toFixed(1)}M`;
@@ -853,14 +505,4 @@ function debounce(fn, waitMs) {
     window.clearTimeout(timer);
     timer = window.setTimeout(() => fn(), waitMs);
   };
-}
-
-function normalizeError(error) {
-  if (error instanceof ApiError) {
-    if (error.kind === "validation") {
-      return `Simulation request rejected: ${error.message}`;
-    }
-    return error.message;
-  }
-  return "Unable to load live simulation data.";
 }
