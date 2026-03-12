@@ -22,7 +22,7 @@ const DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app";
 export class ApiError extends Error {
   /**
    * @param {string} message
-   * @param {"timeout" | "network" | "http" | "parse"} kind
+   * @param {"timeout" | "network" | "http" | "validation" | "parse"} kind
    * @param {{ status?: number; cause?: unknown }} [options]
    */
   constructor(message, kind, options = {}) {
@@ -38,23 +38,34 @@ export class ApiError extends Error {
  * @param {ApiClientOptions} [options]
  */
 export function resolveApiBaseUrl(options = {}) {
-  const explicitBase = options.baseUrl?.trim();
-  if (explicitBase) {
-    return explicitBase.replace(/\/$/, "");
-  }
+  return resolveApiBaseUrls(options)[0] ?? DEFAULT_API_BASE_URL;
+}
 
+/**
+ * @param {ApiClientOptions} [options]
+ */
+export function resolveApiBaseUrls(options = {}) {
+  const locationOrigin =
+    normalizeBaseUrl(options.locationOrigin) ||
+    (typeof window !== "undefined" ? normalizeBaseUrl(window.location?.origin) : "");
   const runtimeConfig =
     options.runtimeConfig ??
     (typeof window !== "undefined"
       ? window.__EVENTRISK_CONFIG ?? window.__EVENTRISK_RUNTIME_CONFIG__ ?? window.__RUNTIME_CONFIG__ ?? {}
       : {});
+  const explicitBase = normalizeBaseUrl(options.baseUrl, locationOrigin);
+  const runtimeBase = normalizeBaseUrl(runtimeConfig.apiBaseUrl, locationOrigin);
+  const sameOriginBase = normalizeBaseUrl(locationOrigin, locationOrigin);
+  const fallbackBase = normalizeBaseUrl(options.fallbackBaseUrl, locationOrigin) || DEFAULT_API_BASE_URL;
 
-  const runtimeBase = runtimeConfig.apiBaseUrl?.trim();
-  if (runtimeBase) {
-    return runtimeBase.replace(/\/$/, "");
+  const primaryBase = explicitBase || runtimeBase || sameOriginBase || fallbackBase;
+  const candidates = [];
+  for (const candidate of [primaryBase, sameOriginBase, runtimeBase, fallbackBase]) {
+    if (candidate && !candidates.includes(candidate)) {
+      candidates.push(candidate);
+    }
   }
-
-  return normalizeBaseUrl(options.fallbackBaseUrl) || DEFAULT_API_BASE_URL;
+  return candidates.slice(0, 2);
 }
 
 /**
@@ -63,16 +74,16 @@ export function resolveApiBaseUrl(options = {}) {
 export function createApiClient(options = {}) {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   const timeoutMs = options.timeoutMs ?? 15_000;
-  const fallbackBaseUrl = normalizeBaseUrl(options.fallbackBaseUrl) || DEFAULT_API_BASE_URL;
   const locationOrigin =
     normalizeBaseUrl(options.locationOrigin) ||
     (typeof window !== "undefined" ? normalizeBaseUrl(window.location?.origin) : "");
-  const baseUrl = resolveApiBaseUrl({
+  const baseUrls = resolveApiBaseUrls({
     baseUrl: options.baseUrl,
-    fallbackBaseUrl,
+    fallbackBaseUrl: normalizeBaseUrl(options.fallbackBaseUrl, locationOrigin) || DEFAULT_API_BASE_URL,
     runtimeConfig: options.runtimeConfig,
     locationOrigin,
   });
+  const baseUrl = baseUrls[0] ?? DEFAULT_API_BASE_URL;
 
   if (typeof fetchImpl !== "function") {
     throw new Error("Fetch implementation is required.");
@@ -83,39 +94,23 @@ export function createApiClient(options = {}) {
    * @param {RequestInit} [init]
    */
   async function fetchJson(path, init = {}) {
-    const shouldRetryAgainstFallback = baseUrl === locationOrigin && fallbackBaseUrl && fallbackBaseUrl !== baseUrl;
-
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error("timeout")), timeoutMs);
-
-    try {
+    let lastError = null;
+    for (let attempt = 0; attempt < baseUrls.length; attempt += 1) {
       try {
-        return await fetchJsonFromBase(baseUrl, path, init, fetchImpl, controller.signal);
+        return await fetchJsonFromBase(baseUrls[attempt], path, init, fetchImpl, timeoutMs);
       } catch (error) {
-        if (
-          shouldRetryAgainstFallback &&
-          error instanceof ApiError &&
-          error.kind !== "parse"
-        ) {
-          return await fetchJsonFromBase(fallbackBaseUrl, path, init, fetchImpl, controller.signal);
+        lastError = normalizeFetchError(error, timeoutMs);
+        if (!shouldRetryRequest(lastError, attempt, baseUrls.length)) {
+          throw lastError;
         }
-        throw error;
       }
-    } catch (error) {
-      if (error instanceof ApiError) {
-        throw error;
-      }
-      if (isAbortError(error)) {
-        throw new ApiError("Request timed out after 15 seconds.", "timeout", { cause: error });
-      }
-      throw new ApiError("Unable to reach the simulation API.", "network", { cause: error });
-    } finally {
-      clearTimeout(timer);
     }
+    throw lastError ?? new ApiError("Unable to reach the simulation API.", "network");
   }
 
   return {
     baseUrl,
+    baseUrls,
     fetchJson,
 
     /**
@@ -217,8 +212,21 @@ export function createApiClient(options = {}) {
 /**
  * @param {string | undefined | null} value
  */
-function normalizeBaseUrl(value) {
-  return value?.trim()?.replace(/\/$/, "") ?? "";
+function normalizeBaseUrl(value, locationOrigin = "") {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const normalized = locationOrigin ? new URL(trimmed, `${locationOrigin}/`) : new URL(trimmed);
+    if (!/^https?:$/.test(normalized.protocol)) {
+      return "";
+    }
+    return normalized.toString().replace(/\/$/, "");
+  } catch (_error) {
+    return "";
+  }
 }
 
 /**
@@ -226,18 +234,28 @@ function normalizeBaseUrl(value) {
  * @param {string} path
  * @param {RequestInit} init
  * @param {typeof fetch} fetchImpl
- * @param {AbortSignal} signal
+ * @param {number} timeoutMs
  */
-async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, signal) {
-  const response = await fetchImpl(`${baseUrl}${path}`, {
-    ...init,
-    signal,
-    headers: {
-      Accept: "application/json",
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
-      ...(init.headers ?? {}),
-    },
-  });
+async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error("timeout")), timeoutMs);
+  let response;
+
+  try {
+    response = await fetchImpl(`${baseUrl}${path}`, {
+      ...init,
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        ...(init.body ? { "Content-Type": "application/json" } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch (error) {
+    throw normalizeFetchError(error, timeoutMs);
+  } finally {
+    clearTimeout(timer);
+  }
 
   const text = await response.text();
   const payload = text ? tryParseJson(text) : null;
@@ -247,10 +265,35 @@ async function fetchJsonFromBase(baseUrl, path, init, fetchImpl, signal) {
       payload && typeof payload === "object" && "detail" in payload && typeof payload.detail === "string"
         ? payload.detail
         : `HTTP ${response.status}`;
-    throw new ApiError(detail, "http", { status: response.status });
+    throw new ApiError(detail, response.status >= 400 && response.status < 500 ? "validation" : "http", {
+      status: response.status,
+    });
   }
 
   return payload;
+}
+
+/**
+ * @param {unknown} error
+ * @param {number} timeoutMs
+ */
+function normalizeFetchError(error, timeoutMs) {
+  if (error instanceof ApiError) {
+    return error;
+  }
+  if (isAbortError(error)) {
+    return new ApiError(`Request timed out after ${Math.round(timeoutMs / 1000)} seconds.`, "timeout", { cause: error });
+  }
+  return new ApiError("Unable to reach the simulation API.", "network", { cause: error });
+}
+
+/**
+ * @param {ApiError} error
+ * @param {number} attempt
+ * @param {number} totalAttempts
+ */
+function shouldRetryRequest(error, attempt, totalAttempts) {
+  return attempt === 0 && totalAttempts > 1 && (error.kind === "timeout" || error.kind === "network");
 }
 
 /**

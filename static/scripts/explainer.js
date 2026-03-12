@@ -1,6 +1,7 @@
 // @ts-check
 
 import { ApiError, createApiClient } from "/static/scripts/api-client.mjs";
+import { applyViewState } from "/static/scripts/view-state.mjs";
 
 const LIVE_API_BASE_URL = "https://market-hedge-simulator.replit.app";
 const STRATEGY_LABELS = {
@@ -67,6 +68,8 @@ const state = {
   curveMetric: "cvar",
   cache: new Map(),
   hasStaticFallback: false,
+  baselineRequestId: 0,
+  strategyRequestId: 0,
 };
 
 const refs = {
@@ -110,9 +113,6 @@ const refs = {
 
 init().catch((error) => {
   console.error(error);
-  setStepState("step1", "error");
-  setStepState("step2", "error");
-  setStepState("step3", "error");
 });
 
 async function init() {
@@ -191,7 +191,7 @@ async function hydrateExplainer() {
     setStepState("step3", "loading");
   }
 
-  await Promise.all([hydrateBaseline(), hydrateStrategyViews(state.strategy, { forceRefresh: true })]);
+  await Promise.allSettled([hydrateBaseline(), hydrateStrategyViews(state.strategy, { forceRefresh: true })]);
   updateControlUi();
 }
 
@@ -212,6 +212,7 @@ async function hydrateStaticFallback() {
 }
 
 async function hydrateBaseline() {
+  const requestId = ++state.baselineRequestId;
   const cached = state.cache.get("step1:baseline");
   if (cached) {
     renderStep1(cached);
@@ -220,12 +221,17 @@ async function hydrateBaseline() {
 
   try {
     const payload = await fetchDistribution(0, "external_hedge");
+    if (requestId !== state.baselineRequestId) {
+      return null;
+    }
     const step1Data = payload.unhedged;
     state.cache.set("step1:baseline", step1Data);
     renderStep1(step1Data);
     return step1Data;
   } catch (error) {
-    setStepState("step1", "error");
+    if (requestId === state.baselineRequestId) {
+      setStepState("step1", "error");
+    }
     throw error;
   }
 }
@@ -239,6 +245,7 @@ function getStep3CacheKey(strategy) {
 }
 
 async function hydrateStrategyViews(strategy, options = {}) {
+  const requestId = ++state.strategyRequestId;
   const forceRefresh = Boolean(options.forceRefresh);
   const step2Key = getStep2CacheKey(strategy);
   const step3Key = getStep3CacheKey(strategy);
@@ -262,12 +269,14 @@ async function hydrateStrategyViews(strategy, options = {}) {
     !forceRefresh && hasStep3Cache ? Promise.resolve(state.cache.get(step3Key)) : fetchStep3(strategy),
   ]);
 
+  if (requestId !== state.strategyRequestId || strategy !== state.strategy) {
+    return;
+  }
+
   if (step2Result.status === "fulfilled") {
     state.cache.set(step2Key, step2Result.value);
-    if (strategy === state.strategy) {
-      renderStep2(step2Result.value);
-    }
-  } else if (strategy === state.strategy) {
+    renderStep2(step2Result.value);
+  } else {
     console.error(step2Result.reason);
     if (!hasStep2Cache) {
       setStepState("step2", "error");
@@ -276,10 +285,8 @@ async function hydrateStrategyViews(strategy, options = {}) {
 
   if (step3Result.status === "fulfilled") {
     state.cache.set(step3Key, step3Result.value);
-    if (strategy === state.strategy) {
-      renderStep3(step3Result.value);
-    }
-  } else if (strategy === state.strategy) {
+    renderStep3(step3Result.value);
+  } else {
     console.error(step3Result.reason);
     if (!hasStep3Cache) {
       setStepState("step3", "error");
@@ -729,9 +736,7 @@ function setStepState(step, status) {
     return;
   }
 
-  skeleton.hidden = status !== "loading";
-  error.hidden = status !== "error";
-  plot.hidden = status !== "ready";
+  applyViewState({ plot, skeleton, error }, status);
 }
 
 function goToStep(index) {
@@ -860,6 +865,9 @@ function debounce(fn, waitMs) {
 
 function normalizeError(error) {
   if (error instanceof ApiError) {
+    if (error.kind === "validation") {
+      return `Simulation request rejected: ${error.message}`;
+    }
     return error.message;
   }
   return "Unable to load live simulation data.";
