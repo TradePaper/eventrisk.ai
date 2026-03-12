@@ -63,9 +63,9 @@
             <label class="metric-picker" for="curveMetricSelect">
               <span>Step 3 metric</span>
               <select id="curveMetricSelect">
-                <option value="cvar">CVaR-95</option>
-                <option value="max_loss">Max Loss</option>
-                <option value="hedge_ratio">Optimal Hedge Ratio</option>
+                <option value="effective_fraction">Effective Hedge %</option>
+                <option value="effective_notional">Effective Hedge Notional</option>
+                <option value="hedge_gap">Unfilled Hedge Gap</option>
               </select>
             </label>
           </div>
@@ -172,10 +172,10 @@
           <article class="snap-step" data-step-index="2" id="step3">
             <div class="step-copy">
               <p class="step-kicker">Step 3</p>
-              <h2 class="step-title">Liquidity-Constrained Risk Transfer Curve</h2>
+              <h2 class="step-title">Deterministic Hedge Capacity Curve</h2>
               <p class="step-subtitle">
-                Feasible hedge ratios change with liability size. The live curve shows where liquidity remains
-                meaningful, where it only partially helps, and where it stops carrying the transfer.
+                Effective hedge capacity is the executable share of exposure after finite market depth is applied.
+                The live curve compares low, medium, and high liquidity regimes from the same underlying cap function.
               </p>
             </div>
 
@@ -202,7 +202,7 @@
                   <p class="metric-value" id="step3MetricValue">—</p>
                 </article>
                 <article class="metric-card">
-                  <p class="metric-label">Optimal Hedge Ratio</p>
+                  <p class="metric-label">Requested Hedge Fraction</p>
                   <p class="metric-value" id="step3HedgeRatio">—</p>
                 </article>
                 <article class="metric-card">
@@ -212,7 +212,7 @@
               </div>
 
               <aside class="annotation">
-                <p>Liquidity, not contractual design, governs practical hedge capacity.</p>
+                <p>Liquidity, not optimization, governs practical hedge capacity in the paper model.</p>
               </aside>
 
               <div class="cta-card">

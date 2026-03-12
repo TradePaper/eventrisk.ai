@@ -113,7 +113,7 @@ class TestSimulatorRuntimeRoute:
         assert "EventRisk" in text
         assert "Read the Paper" in text
         assert "Sportsbook Loss Distribution" in text
-        assert "Liquidity-Constrained Risk Transfer Curve" in text
+        assert "Deterministic Hedge Capacity Curve" in text
         assert "Hedging Efficiency Frontier" in text
         assert "Simulation unavailable. Retry?" in text
         assert "/runtime-config.js" in text
@@ -245,6 +245,8 @@ class TestSimulatorRuntimeRoute:
         assert distribution.status_code == 200
         distribution_payload = distribution.json()
         assert distribution_payload["strategy"] == "external_hedge"
+        assert distribution_payload["requested_hedge_fraction"] == 0.6
+        assert distribution_payload["effective_hedge_fraction"] <= distribution_payload["requested_hedge_fraction"]
         assert len(distribution_payload["unhedged"]["bin_mids"]) > 0
         assert len(distribution_payload["hedged"]["bin_mids"]) > 0
 
@@ -272,6 +274,7 @@ class TestSimulatorRuntimeRoute:
         assert curve.status_code == 200
         curve_payload = curve.json()
         assert len(curve_payload["curve_points"]) == 7
+        assert len(curve_payload["liquidity_regimes"]) == 3
 
         frontier = client.post(
             "/api/tier2/frontier",

@@ -216,6 +216,34 @@ a {
   font: inherit;
 }
 
+.metrics-inline {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.inline-metric {
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 0.8rem 0.85rem;
+  background: var(--surface-strong);
+}
+
+.inline-metric span {
+  display: block;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.inline-metric strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.05rem;
+}
+
 .action-row {
   display: flex;
   gap: 0.75rem;

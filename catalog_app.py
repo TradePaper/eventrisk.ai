@@ -1041,6 +1041,11 @@ def interactive_risk_transfer(inp: InteractiveCurveInV2):
             points.append({
                 "liability":              float(liability),
                 "optimal_hedge_ratio":    round(best_hf, 2),
+                "requested_hedge_fraction": round(best_m.requested_hedge_fraction, 4),
+                "effective_hedge_fraction": round(best_m.effective_hedge_fraction, 4),
+                "requested_hedge_notional": round(best_m.requested_hedge_fraction * float(liability), 4),
+                "effective_hedge_notional": round(best_m.effective_hedge_notional, 4),
+                "liquidity_binding":      bool(best_m.liquidity_binding),
                 "ev":                     round(best_m.ev, 4),
                 "cvar_95":                round(best_m.cvar_95, 4),
                 "max_loss":               round(best_m.max_loss, 4),
@@ -1113,6 +1118,7 @@ class InteractiveCurveV3In(BaseModel):
     strategy: str = "external_hedge"
     seed: Optional[str] = "superbowl_v1"
     n_paths: int = 500
+    requested_hedge_fraction: float = 0.60
 
 
 @app.post("/api/risk-transfer/interactive")
@@ -1120,12 +1126,12 @@ def interactive_risk_transfer_v3(inp: InteractiveCurveV3In):
     """
     Article-first interactive risk-transfer curve.
 
-    Returns scenario_metadata, sorted curve_points with liquidity_binding flags,
-    liquidity_cap info, mid-curve distributions (raw or binned), and collapse_flags.
+    Returns paper-facing deterministic hedge-capacity curves plus a mid-liability
+    hedged/unhedged distribution comparison under the requested hedge fraction.
     """
     import numpy as np
-    from core.optimizer import _objective_score
     from core.liquidity import max_hedge_notional
+    from core.paper_math import build_capacity_curve, build_liquidity_regime_curves
 
     if inp.strategy not in _VALID_STRATEGIES:
         raise HTTPException(400, f"Unknown strategy: {inp.strategy}. Valid: {sorted(_VALID_STRATEGIES)}")
@@ -1151,32 +1157,37 @@ def interactive_risk_transfer_v3(inp: InteractiveCurveV3In):
         liquidity=inp.liquidity,
     )
 
-    grid = np.arange(0.0, 1.01, 0.05)
-
+    medium_liquidity = inp.liquidity.available_liquidity if inp.liquidity else 20_000_000.0
+    participation_rate = inp.liquidity.participation_rate if inp.liquidity else 1.0
+    regime_curves = build_liquidity_regime_curves(
+        liabilities=liabilities,
+        requested_hedge_fraction=inp.requested_hedge_fraction,
+        medium_available_liquidity=medium_liquidity,
+        participation_rate=participation_rate,
+    )
+    medium_curve = next((regime for regime in regime_curves if regime["id"] == "medium"), None)
     curve_points = []
-    for liability in liabilities:
-        best_score = float("-inf")
-        best_hf = 0.0
-        best_m = None
-        best_utilization = 0.0
-
-        for hf in grid:
-            sim = _build_sim(base, inp.strategy, inp.objective, float(liability), float(hf), n_paths)
-            m = simulate_strategy(sim)
-            score = _objective_score(m, inp.objective)
-            if score > best_score:
-                best_score = score
-                best_hf = float(hf)
-                best_m = m
-                best_utilization = m.hedge_utilization
-
+    for point in medium_curve["curve_points"]:
+        sim = _build_sim(
+            base=base,
+            strategy=inp.strategy,
+            objective=inp.objective,
+            liability=float(point["liability"]),
+            hedge_fraction=float(point["requested_hedge_fraction"]),
+            n_paths=n_paths,
+        )
+        metrics = simulate_strategy(sim)
         curve_points.append({
-            "liability":         round(float(liability), 4),
-            "hedge_ratio":       round(best_hf, 2),
-            "ev":                round(best_m.ev, 4),
-            "cvar":              round(best_m.cvar_95, 4),
-            "max_loss":          round(best_m.max_loss, 4),
-            "liquidity_binding": best_utilization >= 0.99,
+            "liability": round(float(point["liability"]), 4),
+            "requested_hedge_fraction": round(float(point["requested_hedge_fraction"]), 4),
+            "effective_hedge_fraction": round(float(point["effective_hedge_fraction"]), 4),
+            "requested_hedge_notional": round(float(point["requested_hedge_notional"]), 4),
+            "effective_hedge_notional": round(float(point["effective_hedge_notional"]), 4),
+            "liquidity_binding": bool(point["liquidity_binding"]),
+            "optimal_hedge_ratio": round(metrics.optimal_hedge_ratio, 4),
+            "ev": round(metrics.ev, 4),
+            "cvar": round(metrics.cvar_95, 4),
+            "max_loss": round(metrics.max_loss, 4),
         })
 
     # curve_points already in ascending liability order (linspace)
@@ -1192,16 +1203,18 @@ def interactive_risk_transfer_v3(inp: InteractiveCurveV3In):
             "participation_rate":  liq.participation_rate,
             "max_notional":        round(max_notional, 2),
             "cap_liability":       round(max_notional, 2),
+            "requested_hedge_fraction": round(inp.requested_hedge_fraction, 4),
         }
 
     # Distributions at mid-curve point
     mid_idx = len(curve_points) // 2
     mid_pt  = curve_points[mid_idx]
     mid_liability  = mid_pt["liability"]
-    mid_hf         = mid_pt["hedge_ratio"]
+    mid_requested_hf = mid_pt["requested_hedge_fraction"]
+    mid_effective_hf = mid_pt["effective_hedge_fraction"]
 
-    sim_uh = _build_sim(base, inp.strategy, inp.objective, mid_liability, 0.0,   n_paths)
-    sim_h  = _build_sim(base, inp.strategy, inp.objective, mid_liability, mid_hf, n_paths)
+    sim_uh = _build_sim(base, inp.strategy, inp.objective, mid_liability, 0.0, n_paths)
+    sim_h  = _build_sim(base, inp.strategy, inp.objective, mid_liability, mid_requested_hf, n_paths)
     pnl_uh = simulate_strategy_raw(sim_uh)
     pnl_h  = simulate_strategy_raw(sim_h)
 
@@ -1209,7 +1222,11 @@ def interactive_risk_transfer_v3(inp: InteractiveCurveV3In):
     if collapsed:
         distributions = {
             "liability":   mid_liability,
-            "hedge_ratio": mid_hf,
+            "requested_hedge_fraction": mid_requested_hf,
+            "effective_hedge_fraction": mid_effective_hf,
+            "requested_hedge_notional": mid_pt["requested_hedge_notional"],
+            "effective_hedge_notional": mid_pt["effective_hedge_notional"],
+            "liquidity_binding": mid_pt["liquidity_binding"],
             "unhedged":    _histogram(pnl_uh),
             "hedged":      _histogram(pnl_h),
             "collapsed":   True,
@@ -1217,7 +1234,11 @@ def interactive_risk_transfer_v3(inp: InteractiveCurveV3In):
     else:
         distributions = {
             "liability":      mid_liability,
-            "hedge_ratio":    mid_hf,
+            "requested_hedge_fraction": mid_requested_hf,
+            "effective_hedge_fraction": mid_effective_hf,
+            "requested_hedge_notional": mid_pt["requested_hedge_notional"],
+            "effective_hedge_notional": mid_pt["effective_hedge_notional"],
+            "liquidity_binding": mid_pt["liquidity_binding"],
             "unhedged_paths": pnl_uh.round(4).tolist(),
             "hedged_paths":   pnl_h.round(4).tolist(),
             "collapsed":      False,
@@ -1237,8 +1258,10 @@ def interactive_risk_transfer_v3(inp: InteractiveCurveV3In):
             "simulator_version":      "v1.2",
             "source":                 "probedge_mc",
             "distribution_liability": round(mid_liability, 4),
+            "requested_hedge_fraction": round(inp.requested_hedge_fraction, 4),
         },
         "curve_points":         curve_points,
+        "liquidity_regimes":    regime_curves,
         "liquidity_cap":        liq_cap,
         "distribution_liability": round(mid_liability, 4),
         "distributions":        distributions,
@@ -1278,6 +1301,16 @@ def risk_transfer_distribution(inp: _DistributionIn):
         )
         return simulate_strategy_raw(sim)
 
+    requested_notional = inp.hedge_fraction * inp.liability
+    effective_notional = requested_notional
+    effective_fraction = inp.hedge_fraction
+    liquidity_binding = False
+    if inp.base_input.liquidity:
+        liq = inp.base_input.liquidity
+        effective_notional = min(requested_notional, liq.available_liquidity * liq.participation_rate)
+        effective_fraction = effective_notional / max(inp.liability, 1e-9)
+        liquidity_binding = effective_fraction + 1e-9 < inp.hedge_fraction
+
     pnl_unhedged = _run(0.0)
     pnl_hedged   = _run(inp.hedge_fraction)
 
@@ -1303,7 +1336,11 @@ def risk_transfer_distribution(inp: _DistributionIn):
     return {
         "strategy":    inp.strategy,
         "liability":   inp.liability,
-        "hedge_fraction": inp.hedge_fraction,
+        "requested_hedge_fraction": inp.hedge_fraction,
+        "effective_hedge_fraction": round(effective_fraction, 4),
+        "requested_hedge_notional": round(requested_notional, 4),
+        "effective_hedge_notional": round(effective_notional, 4),
+        "liquidity_binding": liquidity_binding,
         "n_paths":     n_paths,
         "unhedged":    _hist(pnl_unhedged),
         "hedged":      _hist(pnl_hedged),
@@ -1381,7 +1418,7 @@ def tier2_frontier(inp: _Tier2In):
         cvar_alpha=0.95,
     )
     return {
-        "title":     "Figure 4 — Hedging Efficiency Frontier",
+        "title":     "Figure 5 — Hedging Efficiency Frontier",
         "frontiers": build_efficiency_frontier(base),
     }
 
@@ -1392,7 +1429,7 @@ def tier2_feasibility(inp: _Tier2In):
 
     result = build_feasibility_map(inp.target_hedge_ratio)
     return {
-        "title": "Figure 5 — Hedging Feasibility Map",
+        "title": "Figure 1 — Sportsbook Hedging Feasibility Map",
         **result,
     }
 

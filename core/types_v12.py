@@ -55,14 +55,19 @@ class StrategyMetrics:
     max_loss: float
     cvar_95: float
     optimal_hedge_ratio: float
+    requested_hedge_fraction: float
+    effective_hedge_fraction: float
     effective_hedge_notional: float
     hedge_utilization: float        # effective/max_hedge
+    liquidity_binding: bool
 
 
 @dataclass
 class RiskTransferPoint:
     liability: float
     optimal_hedge_ratio: float
+    requested_hedge_fraction: float
+    effective_hedge_fraction: float
     ev: float
     cvar_95: float
     max_loss: float

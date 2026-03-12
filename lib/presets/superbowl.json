@@ -4,9 +4,9 @@
   "paper_url": "https://eventrisk.ai/paper",
   "meta": {
     "event": "Super Bowl LIX Winner",
-    "stake_usd": 120000000,
+    "stake_usd": 136000000,
     "true_probability": 0.55,
-    "market_price": 0.52,
+    "market_price": 0.55,
     "liquidity_usd": 20000000,
     "target_hedge_ratio": 0.60,
     "simulation_count": 10000,
@@ -14,25 +14,28 @@
   },
   "step1": {
     "title": "Figure 1 — Unhedged Liability Distribution",
-    "bins": [-120,-110,-100,-90,-80,-70,-60,-50,-40,-30,-20,-10,0,10],
-    "unhedged_density": [0.01,0.03,0.05,0.08,0.10,0.14,0.15,0.14,0.11,0.08,0.06,0.03,0.01,0.01],
-    "ev_m": -3.2,
-    "cvar95_m": -76.1,
-    "max_loss_m": -120.0
+    "bins": [-140,-130,-120,-110,-100,-90,-80,-70,-60,-50,-40,-30,-20,-10,0],
+    "unhedged_density": [0.02,0.05,0.08,0.12,0.14,0.14,0.13,0.10,0.08,0.06,0.04,0.02,0.01,0.01,0.00],
+    "ev_m": -66.3,
+    "cvar95_m": -120.0,
+    "max_loss_m": -128.0
   },
   "step2": {
     "title": "Figure 2 — Hedged vs Unhedged Distribution Overlay",
-    "bins": [-120,-110,-100,-90,-80,-70,-60,-50,-40,-30,-20,-10,0,10],
-    "unhedged_density": [0.01,0.03,0.05,0.08,0.10,0.14,0.15,0.14,0.11,0.08,0.06,0.03,0.01,0.01],
-    "hedged_density": [0.00,0.00,0.01,0.02,0.05,0.09,0.14,0.16,0.17,0.15,0.11,0.06,0.03,0.01],
-    "ev_unhedged_m": -3.2,
-    "ev_hedged_m": -5.1,
-    "cvar95_unhedged_m": -76.1,
-    "cvar95_hedged_m": -41.2,
-    "tail_reduction_pct": 45.9
+    "bins": [-140,-130,-120,-110,-100,-90,-80,-70,-60,-50,-40,-30,-20,-10,0],
+    "unhedged_density": [0.02,0.05,0.08,0.12,0.14,0.14,0.13,0.10,0.08,0.06,0.04,0.02,0.01,0.01,0.00],
+    "hedged_density": [0.00,0.01,0.03,0.06,0.10,0.14,0.16,0.15,0.12,0.09,0.06,0.04,0.02,0.01,0.01],
+    "ev_unhedged_m": -66.3,
+    "ev_hedged_m": -66.5,
+    "cvar95_unhedged_m": -120.0,
+    "cvar95_hedged_m": -101.0,
+    "max_loss_unhedged_m": -128.0,
+    "max_loss_hedged_m": -101.0,
+    "tail_reduction_pct": 15.8
   },
   "step3": {
     "title": "Figure 3 — Liquidity-Constrained Risk Transfer Curve",
+    "liabilities_m": [20,40,60,80,100,120,140],
     "points": [
       {"liability_m": 20, "tail_risk_unhedged_m": 13.9, "tail_risk_hedged_m": 8.8, "hedge_utilization": 0.22, "feasibility": "green"},
       {"liability_m": 40, "tail_risk_unhedged_m": 27.1, "tail_risk_hedged_m": 17.0, "hedge_utilization": 0.35, "feasibility": "green"},

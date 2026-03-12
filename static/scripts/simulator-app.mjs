@@ -31,6 +31,9 @@ const refs = {
   liabilityValue: document.getElementById("liabilityValue"),
   liquidityValue: document.getElementById("liquidityValue"),
   hedgeValue: document.getElementById("hedgeValue"),
+  requestedFractionValue: document.getElementById("requestedFractionValue"),
+  effectiveFractionValue: document.getElementById("effectiveFractionValue"),
+  liquidityBindingValue: document.getElementById("liquidityBindingValue"),
   chartStatus: document.getElementById("chartStatus"),
   copyButton: /** @type {HTMLButtonElement} */ (document.getElementById("copyShareLink")),
   runButton: /** @type {HTMLButtonElement} */ (document.getElementById("runSimulation")),
@@ -106,6 +109,7 @@ function updateDisplay() {
   refs.liabilityValue.textContent = formatCurrency(state.liability);
   refs.liquidityValue.textContent = formatCurrency(state.liquidity);
   refs.hedgeValue.textContent = `${Math.round(state.hedgeFraction * 100)}%`;
+  refs.requestedFractionValue.textContent = `${Math.round(state.hedgeFraction * 100)}%`;
 }
 
 function updateActivePreset() {
@@ -246,42 +250,43 @@ function renderDistribution(data) {
  * @param {any} data
  */
 function renderCurve(data) {
+  const regimes = data.liquidity_regimes ?? [];
+  const requested = data.curve_points.map((point) => point.requested_hedge_fraction * 100);
   const liabilities = data.curve_points.map((point) => point.liability);
-  const cvar = data.curve_points.map((point) => Math.abs(point.cvar));
-  const hedgeRatio = data.curve_points.map((point) => point.hedge_ratio * 100);
+  const mediumPoint = data.curve_points.find((point) => Math.abs(point.liability - state.liability) < 1) ?? data.curve_points[0];
+
+  refs.effectiveFractionValue.textContent = `${Math.round((mediumPoint?.effective_hedge_fraction ?? 0) * 100)}%`;
+  refs.liquidityBindingValue.textContent = mediumPoint?.liquidity_binding ? "Yes" : "No";
 
   window.Plotly.newPlot(
     refs.panels.curve.plot,
-    [
-      {
-        x: liabilities,
-        y: cvar,
-        type: "scatter",
-        mode: "lines+markers",
-        name: "EWCL",
-        line: { color: "#0d5c63", width: 3 },
-        marker: { size: 8 },
+    [{
+      x: liabilities,
+      y: requested,
+      type: "scatter",
+      mode: "lines",
+      name: "Requested Hedge %",
+      line: { color: "#11232b", width: 2, dash: "dash" },
+    },
+    ...regimes.map((regime) => ({
+      x: regime.curve_points.map((point) => point.liability),
+      y: regime.curve_points.map((point) => point.effective_hedge_fraction * 100),
+      type: "scatter",
+      mode: "lines+markers",
+      name: regime.label,
+      line: {
+        color: regime.id === "low" ? "#b65a35" : regime.id === "medium" ? "#0d5c63" : "#126b52",
+        width: regime.id === "medium" ? 3 : 2,
       },
-      {
-        x: liabilities,
-        y: hedgeRatio,
-        type: "scatter",
-        mode: "lines+markers",
-        name: "Optimal Hedge %",
-        yaxis: "y2",
-        line: { color: "#b07a00", width: 2, dash: "dot" },
-        marker: { size: 7 },
-      },
-    ],
+      marker: { size: regime.id === "medium" ? 8 : 7 },
+    }))],
     {
-      ...baseLayout("Liability", "EWCL"),
-      yaxis2: {
-        title: "Optimal Hedge %",
-        overlaying: "y",
-        side: "right",
+      ...baseLayout("Sportsbook Liability", "Effective Hedge Fraction"),
+      yaxis: {
+        title: "Effective Hedge Fraction (%)",
         rangemode: "tozero",
         ticksuffix: "%",
-        gridcolor: "rgba(0,0,0,0)",
+        gridcolor: "rgba(17,35,43,0.08)",
       },
     },
     { displayModeBar: false, responsive: true },
@@ -353,6 +358,9 @@ function normalizeError(error) {
   }
   return "The live API could not be reached.";
 }
+
+refs.effectiveFractionValue.textContent = "—";
+refs.liquidityBindingValue.textContent = "—";
 
 /**
  * @param {number} value

@@ -102,13 +102,14 @@ const suites = [
       simulation_count:   500,
     });
     assert(status === 200,                              "status 200");
-    assert(body.title === "Figure 4 — Hedging Efficiency Frontier", "title correct");
+    assert(body.title === "Figure 5 — Hedging Efficiency Frontier", "title correct");
     assert(typeof body.frontiers === "object",          "frontiers object present");
     assert(Array.isArray(body.frontiers.shallow),       "frontiers.shallow is array");
     assert(Array.isArray(body.frontiers.deep),          "frontiers.deep is array");
     assert(body.frontiers.shallow.length === 21,        "shallow has 21 points (0..1 step 0.05)");
     const row = body.frontiers.shallow[0];
-    assert("hedge_ratio" in row,                        "row has hedge_ratio");
+    assert("requested_hedge_fraction" in row,           "row has requested hedge fraction");
+    assert("effective_hedge_fraction" in row,           "row has effective hedge fraction");
     assert("ev_sacrificed" in row,                      "row has ev_sacrificed");
     assert("tail_reduction" in row,                     "row has tail_reduction");
   }),
@@ -122,8 +123,8 @@ const suites = [
       target_hedge_ratio: 0.60,
       simulation_count:   500,
     });
-    assert(status === 200,                                       "status 200");
-    assert(body.title === "Figure 5 — Hedging Feasibility Map", "title correct");
+    assert(status === 200,                                                   "status 200");
+    assert(body.title === "Figure 1 — Sportsbook Hedging Feasibility Map",   "title correct");
     assert(Array.isArray(body.liabilities),                      "liabilities array present");
     assert(Array.isArray(body.liquidities),                      "liquidities array present");
     assert(Array.isArray(body.region_grid),                      "region_grid array present");
@@ -193,10 +194,12 @@ const suites = [
     assert(status === 200,                      "status 200");
     assert("scenario_metadata" in body,         "scenario_metadata present");
     assert("curve_points" in body,              "curve_points present");
+    assert("liquidity_regimes" in body,         "liquidity_regimes present");
     assert("liquidity_cap" in body,             "liquidity_cap present");
     assert("distributions" in body,             "distributions present");
     assert("collapse_flags" in body,            "collapse_flags present");
     assert(body.curve_points.length === 4,      "4 curve points");
+    assert(body.liquidity_regimes.length === 3, "3 liquidity regimes");
     const sm = body.scenario_metadata;
     assert(sm.simulator_version === "v1.2",     "simulator_version is v1.2");
     assert(sm.source === "probedge_mc",         "source is probedge_mc");
