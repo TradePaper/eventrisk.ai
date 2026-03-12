@@ -60,12 +60,13 @@ class TestRedesignRoutes:
         assert "id=\"btnBack\"" in text
         assert "id=\"btnNext\"" in text
         assert "id=\"snapDeck\"" in text
-        assert "/runtime-config.js" in text
-        assert "/static/scripts/explainer.js" in text
+        assert "/runtime-config.js?v=" in text
+        assert "/static/scripts/explainer.js?v=" in text
         assert "Simulation unavailable" in text
         assert "data-step-target=\"0\"" in text
         assert "data-step-target=\"1\"" in text
         assert "data-step-target=\"2\"" in text
+        assert "rev " in text
 
     def test_paper_gallery_figure_titles(self):
         resp = client.get("/static/scripts/paper.js")
@@ -87,7 +88,7 @@ class TestRedesignRoutes:
     def test_paper_route_uses_chart_rendering_script_not_text_only_cards(self):
         html = client.get("/paper").text
         js = client.get("/static/scripts/paper.js").text
-        assert "/runtime-config.js" in html
+        assert "/runtime-config.js?v=" in html
         assert "https://cdn.plot.ly/plotly-2.35.2.min.js" in html
         assert "renderFigure0" in js
         assert 'class="mechanism-diagram"' in js
@@ -108,8 +109,8 @@ class TestRedesignRoutes:
         assert "https://cdn.plot.ly/plotly-2.35.2.min.js" in text
         assert 'id="figureList"' in text
         assert "Figure 0: Event Market Risk Transfer Mechanism" in text
-        assert "/static/scripts/paper.js" in text
-        assert text.index('/runtime-config.js" defer') < text.index('plotly-2.35.2.min.js" defer') < text.index('/static/scripts/paper.js" defer')
+        assert "/static/scripts/paper.js?v=" in text
+        assert text.index("/runtime-config.js?v=") < text.index('plotly-2.35.2.min.js" defer') < text.index("/static/scripts/paper.js?v=")
 
     def test_redesigned_routes_hide_legacy_controls(self):
         for route in ("/explainer", "/paper", "/simulator"):
@@ -163,11 +164,13 @@ class TestRedesignRoutes:
 
     def test_explainer_controls_trigger_live_refresh_paths(self):
         text = client.get("/static/scripts/explainer.js").text
-        assert 'const shouldDebugApiBase = new URL(window.location.href).searchParams.get("debugApi") === "1";' in text
-        assert 'console.info("[explainer] resolved API base:", client.baseUrl);' in text
+        assert "readRuntimeConfig" in text
+        assert "shouldEnableApiDebug" in text
+        assert 'console.info("[explainer] resolved API base:", client.baseUrl, client.baseUrls);' in text
         assert 'const EXPLAINER_FALLBACK_PRESET = "/lib/presets/superbowl.json";' in text
         assert "const CAPACITY_METRIC = {" in text
         assert "await hydrateStaticFallback();" in text
+        assert 'void hydrateExplainer();' in text
         assert 'await hydrateStrategyViews(strategy, { forceRefresh: true });' in text
         assert "const step2Key = getStep2CacheKey(strategy);" in text
         assert "const step3Key = getStep3CacheKey(strategy);" in text
@@ -182,6 +185,9 @@ class TestRedesignRoutes:
         assert "renderStaticStep1(preset);" in text
         assert "renderStaticStep2(preset);" in text
         assert "renderStaticStep3(preset);" in text
+        assert 'if (requestId === state.baselineRequestId && !state.hasStaticFallback) {' in text
+        assert 'if (!hasStep2Cache && !state.hasStaticFallback) {' in text
+        assert 'if (!hasStep3Cache && !state.hasStaticFallback) {' in text
         assert 'applyViewState({ plot, skeleton, error }, status);' in text
         assert "Selected Metric" not in text
         assert "Optimal Hedge Ratio" not in text

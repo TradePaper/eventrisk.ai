@@ -1,6 +1,6 @@
 // @ts-check
 
-import { createApiClient, ApiError } from "/static/scripts/api-client.mjs";
+import { createApiClient, ApiError, readRuntimeConfig, shouldEnableApiDebug } from "/static/scripts/api-client.mjs";
 import { applyViewState } from "/static/scripts/view-state.mjs";
 import {
   SIMULATOR_DEFAULTS,
@@ -16,7 +16,9 @@ const PRESETS = {
   weather: { label: "Weather", liability: 60_000_000, liquidity: 8_000_000, hedgeFraction: 0.7 },
 };
 
-const client = createApiClient();
+const runtimeConfig = readRuntimeConfig();
+const client = createApiClient({ runtimeConfig });
+const shouldDebugApi = shouldEnableApiDebug(runtimeConfig);
 
 const state = {
   ...SIMULATOR_DEFAULTS,
@@ -51,6 +53,9 @@ const refs = {
 };
 
 function init() {
+  if (shouldDebugApi) {
+    console.info("[simulator] resolved API base:", client.baseUrl, client.baseUrls);
+  }
   refs.liabilityInput.value = String(state.liability);
   refs.liquidityInput.value = String(liquidityToLogValue(state.liquidity));
   refs.hedgeInput.value = String(state.hedgeFraction);
@@ -161,8 +166,13 @@ async function runSimulation() {
   setPanelsState("loading");
 
   const results = await Promise.all([
-    loadPanel("distribution", requestId, () => client.fetchDistribution(requestState), renderDistribution),
-    loadPanel("curve", requestId, () => client.fetchInteractiveCurve(requestState), renderCurve),
+    loadPanel(
+      "distribution",
+      requestId,
+      () => client.fetchDistribution(requestState).then(normalizeDistributionResponse),
+      renderDistribution,
+    ),
+    loadPanel("curve", requestId, () => client.fetchInteractiveCurve(requestState).then(normalizeCurveResponse), renderCurve),
     loadPanel("frontier", requestId, () => client.fetchFrontier(requestState), renderFrontier),
   ]);
 
@@ -251,12 +261,22 @@ function renderDistribution(data) {
  */
 function renderCurve(data) {
   const regimes = data.liquidity_regimes ?? [];
-  const requested = data.curve_points.map((point) => point.requested_hedge_fraction * 100);
+  const requested = data.curve_points.map((point) => point.requestedHedgeFraction * 100);
   const liabilities = data.curve_points.map((point) => point.liability);
   const mediumPoint = data.curve_points.find((point) => Math.abs(point.liability - state.liability) < 1) ?? data.curve_points[0];
 
-  refs.effectiveFractionValue.textContent = formatFraction(mediumPoint?.effective_hedge_fraction ?? 0);
-  refs.liquidityBindingValue.textContent = mediumPoint?.liquidity_binding ? "Yes" : "No";
+  refs.requestedFractionValue.textContent = formatFraction(mediumPoint?.requestedHedgeFraction ?? state.hedgeFraction);
+  refs.effectiveFractionValue.textContent = formatFraction(mediumPoint?.effectiveHedgeFraction ?? 0);
+  refs.liquidityBindingValue.textContent = mediumPoint?.liquidityBinding ? "Yes" : "No";
+  if (shouldDebugApi && mediumPoint) {
+    console.info("[simulator] capacity snapshot", {
+      liability: mediumPoint.liability,
+      liquidity: state.liquidity,
+      requestedHedgeFraction: mediumPoint.requestedHedgeFraction,
+      effectiveHedgeFraction: mediumPoint.effectiveHedgeFraction,
+      liquidityBinding: mediumPoint.liquidityBinding,
+    });
+  }
 
   window.Plotly.newPlot(
     refs.panels.curve.plot,
@@ -270,7 +290,7 @@ function renderCurve(data) {
     },
     ...regimes.map((regime) => ({
       x: regime.curve_points.map((point) => point.liability),
-      y: regime.curve_points.map((point) => point.effective_hedge_fraction * 100),
+      y: regime.curve_points.map((point) => point.effectiveHedgeFraction * 100),
       type: "scatter",
       mode: "lines+markers",
       name: regime.label,
@@ -347,16 +367,16 @@ function baseLayout(xTitle, yTitle) {
 function normalizeError(error) {
   if (error instanceof ApiError) {
     if (error.kind === "timeout") {
-      return "The live API timed out after 15 seconds.";
+      return formatErrorDetail(error, "The live API timed out after 15 seconds.");
     }
     if (error.kind === "validation") {
-      return "The simulation request was rejected by the API.";
+      return formatErrorDetail(error, "The simulation request was rejected by the API.");
     }
     if (error.kind === "http" && error.status) {
-      return `The simulation API returned HTTP ${error.status}.`;
+      return formatErrorDetail(error, `The simulation API returned HTTP ${error.status}.`);
     }
   }
-  return "The live API could not be reached.";
+  return error instanceof ApiError ? formatErrorDetail(error, error.message) : "The live API could not be reached.";
 }
 
 refs.effectiveFractionValue.textContent = "—";
@@ -378,6 +398,57 @@ function formatCurrency(value) {
  */
 function formatFraction(value) {
   return value.toFixed(2);
+}
+
+function normalizeDistributionResponse(payload) {
+  return {
+    ...payload,
+    requestedHedgeFraction: readFractionField(payload, "requestedHedgeFraction", "requested_hedge_fraction"),
+    effectiveHedgeFraction: readFractionField(payload, "effectiveHedgeFraction", "effective_hedge_fraction"),
+    liquidityBinding: readBooleanField(payload, "liquidityBinding", "liquidity_binding"),
+  };
+}
+
+function normalizeCurveResponse(payload) {
+  const curvePoints = Array.isArray(payload.curve_points)
+    ? payload.curve_points.map((point) => normalizeCurvePoint(point))
+    : [];
+  const liquidityRegimes = Array.isArray(payload.liquidity_regimes)
+    ? payload.liquidity_regimes.map((regime) => ({
+        ...regime,
+        curve_points: Array.isArray(regime.curve_points) ? regime.curve_points.map((point) => normalizeCurvePoint(point)) : [],
+      }))
+    : [];
+  return {
+    ...payload,
+    curve_points: curvePoints,
+    liquidity_regimes: liquidityRegimes,
+  };
+}
+
+function normalizeCurvePoint(point) {
+  return {
+    ...point,
+    requestedHedgeFraction: readFractionField(point, "requestedHedgeFraction", "requested_hedge_fraction"),
+    effectiveHedgeFraction: readFractionField(point, "effectiveHedgeFraction", "effective_hedge_fraction"),
+    liquidityBinding: readBooleanField(point, "liquidityBinding", "liquidity_binding"),
+  };
+}
+
+function readFractionField(source, camelKey, snakeKey) {
+  const raw = source?.[camelKey] ?? source?.[snakeKey] ?? 0;
+  return Number(raw) || 0;
+}
+
+function readBooleanField(source, camelKey, snakeKey) {
+  return Boolean(source?.[camelKey] ?? source?.[snakeKey]);
+}
+
+function formatErrorDetail(error, fallback) {
+  const location = error.url ? `POST ${error.url}` : "API request";
+  const status = error.status ? ` [${error.status}]` : "";
+  const body = error.responseText ? ` ${error.responseText}` : "";
+  return `${fallback} ${location}${status}.${body}`.trim();
 }
 
 init();

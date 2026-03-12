@@ -4,10 +4,12 @@ import dataclasses
 import json
 import threading
 import html
+import subprocess
 from contextlib import contextmanager
-from fastapi import FastAPI, HTTPException, Query
+from functools import lru_cache
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional, List
@@ -54,8 +56,11 @@ DB_PATH = "tmp/contracts.db"
 app = FastAPI(title="ProbEdge Research")
 _NO_CACHE = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
 DEFAULT_PAPER_URL = "https://eventrisk.ai/paper.pdf"
-DEFAULT_API_BASE_URL = "https://market-hedge-simulator.replit.app"
+DEFAULT_API_BASE_URL = ""
 PAPER_URL_ENV_KEY = "PAPER_URL"
+API_BASE_URL_ENV_KEY = "API_BASE_URL"
+BUILD_ID_ENV_KEY = "BUILD_ID"
+DEBUG_API_ENV_KEY = "EVENTRISK_DEBUG_API"
 _ALLOWED_CORS_ORIGINS = [
     "https://eventrisk.ai",
     "https://www.eventrisk.ai",
@@ -82,6 +87,36 @@ def _get_paper_url() -> str:
     return configured.strip() or DEFAULT_PAPER_URL
 
 
+def _get_api_base_url(request: Optional[Request] = None) -> str:
+    configured = os.environ.get(API_BASE_URL_ENV_KEY, "").strip()
+    if configured:
+        return configured.rstrip("/")
+    if request is not None:
+        return str(request.base_url).rstrip("/")
+    return DEFAULT_API_BASE_URL
+
+
+@lru_cache(maxsize=1)
+def _git_sha() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except Exception:
+        return "unknown"
+
+
+def _build_id() -> str:
+    configured = os.environ.get(BUILD_ID_ENV_KEY, "").strip()
+    return configured or _git_sha()
+
+
+def _debug_api_enabled() -> bool:
+    return os.environ.get(DEBUG_API_ENV_KEY, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _paper_link(paper_url: str, label: str, *, class_name: str = "", element_id: str = "") -> str:
     id_attr = f' id="{element_id}"' if element_id else ""
     if paper_url:
@@ -104,9 +139,26 @@ def _paper_link_tokens(paper_url: str) -> dict[str, str]:
     }
 
 
-def _serve_page(path: str) -> HTMLResponse:
+def _version_stamp_markup() -> str:
+    stamp = html.escape(_build_id(), quote=True)
+    return f'<span class="version-stamp" aria-label="Frontend revision">rev {stamp}</span>'
+
+
+def _asset_tokens(request: Request) -> dict[str, str]:
+    version = html.escape(_build_id(), quote=True)
+    runtime_src = f'/runtime-config.js?v={version}'
+    return {
+        "__ASSET_VERSION__": version,
+        "__RUNTIME_CONFIG_SRC__": runtime_src,
+        "__VERSION_STAMP__": _version_stamp_markup(),
+    }
+
+
+def _serve_page(path: str, request: Request) -> HTMLResponse:
     with open(path) as f:
         content = f.read()
+        for token, value in _asset_tokens(request).items():
+            content = content.replace(token, value)
         for token, markup in _paper_link_tokens(_get_paper_url()).items():
             content = content.replace(token, markup)
         return HTMLResponse(content=content, headers=_NO_CACHE)
@@ -244,61 +296,72 @@ def index():
 
 
 @app.get("/explainer", response_class=HTMLResponse)
-def explainer_page():
-    return _serve_page("static/explainer.html")
+def explainer_page(request: Request):
+    return _serve_page("static/explainer.html", request)
 
 
 @app.get("/paper", response_class=HTMLResponse)
-def paper_page():
-    return _serve_page("static/paper.html")
+def paper_page(request: Request):
+    return _serve_page("static/paper.html", request)
 
 
 @app.get("/simulator", response_class=HTMLResponse)
-def simulator_page():
-    return _serve_page("static/simulator.html")
+def simulator_page(request: Request):
+    return _serve_page("static/simulator.html", request)
 
 
 @app.get("/event-markets", response_class=HTMLResponse)
-def event_markets():
-    return _serve_page("static/event-markets.html")
+def event_markets(request: Request):
+    return _serve_page("static/event-markets.html", request)
 
 
 @app.get("/hedging-simulator", response_class=HTMLResponse)
-def hedging_simulator():
-    return _serve_page("static/index.html")
+def hedging_simulator(request: Request):
+    return _serve_page("static/index.html", request)
 
 
 @app.get("/probability-gap", response_class=HTMLResponse)
-def probability_gap():
-    return _serve_page("static/probability-gap.html")
+def probability_gap(request: Request):
+    return _serve_page("static/probability-gap.html", request)
 
 
 @app.get("/contract-library", response_class=HTMLResponse)
-def contract_library():
-    return _serve_page("static/catalog.html")
+def contract_library(request: Request):
+    return _serve_page("static/catalog.html", request)
 
 
 @app.get("/backtest", response_class=HTMLResponse)
-def backtest_page():
-    return _serve_page("static/backtest.html")
+def backtest_page(request: Request):
+    return _serve_page("static/backtest.html", request)
 
 
 @app.get("/reports", response_class=HTMLResponse)
-def reports_page():
-    return _serve_page("static/reports.html")
+def reports_page(request: Request):
+    return _serve_page("static/reports.html", request)
 
 
 @app.get("/runtime-config.js")
-def runtime_config():
-    api_base = os.environ.get("API_BASE_URL", DEFAULT_API_BASE_URL).strip() or DEFAULT_API_BASE_URL
+def runtime_config(request: Request):
+    api_base = html.escape(_get_api_base_url(request), quote=True)
     paper_url = html.escape(_get_paper_url(), quote=True)
+    build_id = html.escape(_build_id(), quote=True)
+    debug_api = "true" if _debug_api_enabled() else "false"
     js = (
-        f'window.__EVENTRISK_CONFIG = {{"apiBaseUrl": "{api_base}", "paperUrl": "{paper_url}"}};\n'
+        f'window.__EVENTRISK_CONFIG = {{"apiBaseUrl": "{api_base}", "paperUrl": "{paper_url}", "buildId": "{build_id}", "debugApi": {debug_api}}};\n'
         "window.__EVENTRISK_RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG;\n"
         "window.__RUNTIME_CONFIG__ = window.__EVENTRISK_CONFIG;\n"
     )
     return Response(content=js, media_type="application/javascript",
                     headers={"Cache-Control": "no-store, no-cache, must-revalidate"})
+
+
+@app.get("/version.json")
+def version_metadata(request: Request):
+    return JSONResponse({
+        "buildId": _build_id(),
+        "gitSha": _git_sha(),
+        "apiBaseUrl": _get_api_base_url(request),
+    }, headers=_NO_CACHE)
 
 
 # ---------------------------------------------------------------------------

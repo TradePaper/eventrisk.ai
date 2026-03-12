@@ -92,6 +92,27 @@ a {
   gap: 1.25rem;
 }
 
+.sim-footer {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 1.5rem 1.25rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.version-stamp {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.15rem 0.45rem;
+  color: var(--brand-strong);
+  background: rgba(255, 255, 255, 0.3);
+}
+
 .control-column {
   display: grid;
   gap: 1rem;
@@ -376,7 +397,8 @@ code {
 
 @media (max-width: 640px) {
   .sim-nav-inner,
-  .sim-layout {
+  .sim-layout,
+  .sim-footer {
     padding-left: 1rem;
     padding-right: 1rem;
   }
