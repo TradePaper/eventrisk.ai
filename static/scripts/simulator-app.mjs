@@ -233,19 +233,22 @@ async function loadPanel(panelKey, requestId, load, render) {
  * @param {any} data
  */
 function renderDistribution(data) {
+  const unhedged = data?.unhedged ?? { bin_mids: [], counts: [] };
+  const hedged = data?.hedged ?? { bin_mids: [], counts: [] };
+
   window.Plotly.newPlot(
     refs.panels.distribution.plot,
     [
       {
-        x: data.unhedged.bin_mids,
-        y: data.unhedged.counts,
+        x: unhedged.bin_mids,
+        y: unhedged.counts,
         type: "bar",
         name: "Unhedged",
         marker: { color: "#d35d47", opacity: 0.62 },
       },
       {
-        x: data.hedged.bin_mids,
-        y: data.hedged.counts,
+        x: hedged.bin_mids,
+        y: hedged.counts,
         type: "bar",
         name: "Hedged",
         marker: { color: "#126b52", opacity: 0.68 },
@@ -260,10 +263,14 @@ function renderDistribution(data) {
  * @param {any} data
  */
 function renderCurve(data) {
-  const regimes = data.liquidity_regimes ?? [];
-  const requested = data.curve_points.map((point) => point.requestedHedgeFraction * 100);
-  const liabilities = data.curve_points.map((point) => point.liability);
-  const mediumPoint = data.curve_points.find((point) => Math.abs(point.liability - state.liability) < 1) ?? data.curve_points[0];
+  const curvePoints = Array.isArray(data?.curve_points) ? data.curve_points : [];
+  const regimes = Array.isArray(data?.liquidity_regimes) ? data.liquidity_regimes : [];
+  const requested = curvePoints.map((point) => point.requestedHedgeFraction * 100);
+  const liabilities = curvePoints.map((point) => point.liability);
+  const mediumPoint =
+    curvePoints.find((point) => Math.abs(point.liability - state.liability) < 1) ??
+    curvePoints[Math.floor(curvePoints.length / 2)] ??
+    null;
 
   refs.requestedFractionValue.textContent = formatFraction(mediumPoint?.requestedHedgeFraction ?? state.hedgeFraction);
   refs.effectiveFractionValue.textContent = formatFraction(mediumPoint?.effectiveHedgeFraction ?? 0);
@@ -280,26 +287,30 @@ function renderCurve(data) {
 
   window.Plotly.newPlot(
     refs.panels.curve.plot,
-    [{
-      x: liabilities,
-      y: requested,
-      type: "scatter",
-      mode: "lines",
-      name: "Requested Hedge %",
-      line: { color: "#11232b", width: 2, dash: "dash" },
-    },
-    ...regimes.map((regime) => ({
-      x: regime.curve_points.map((point) => point.liability),
-      y: regime.curve_points.map((point) => point.effectiveHedgeFraction * 100),
-      type: "scatter",
-      mode: "lines+markers",
-      name: regime.label,
-      line: {
-        color: regime.id === "low" ? "#b65a35" : regime.id === "medium" ? "#0d5c63" : "#126b52",
-        width: regime.id === "medium" ? 3 : 2,
+    [
+      {
+        x: liabilities,
+        y: requested,
+        type: "scatter",
+        mode: "lines",
+        name: "Requested Hedge %",
+        line: { color: "#11232b", width: 2, dash: "dash" },
       },
-      marker: { size: regime.id === "medium" ? 8 : 7 },
-    }))],
+      ...regimes
+        .filter((regime) => Array.isArray(regime.curve_points) && regime.curve_points.length > 0)
+        .map((regime) => ({
+          x: regime.curve_points.map((point) => point.liability),
+          y: regime.curve_points.map((point) => point.effectiveHedgeFraction * 100),
+          type: "scatter",
+          mode: "lines+markers",
+          name: regime.label,
+          line: {
+            color: regime.id === "low" ? "#b65a35" : regime.id === "medium" ? "#0d5c63" : "#126b52",
+            width: regime.id === "medium" ? 3 : 2,
+          },
+          marker: { size: regime.id === "medium" ? 8 : 7 },
+        })),
+    ],
     {
       ...baseLayout("Sportsbook Liability", "Effective Hedge Fraction"),
       yaxis: {
@@ -317,11 +328,14 @@ function renderCurve(data) {
  * @param {any} data
  */
 function renderFrontier(data) {
+  const shallow = Array.isArray(data?.frontiers?.shallow) ? data.frontiers.shallow : [];
+  const deep = Array.isArray(data?.frontiers?.deep) ? data.frontiers.deep : [];
+
   window.Plotly.newPlot(
     refs.panels.frontier.plot,
     [
-      frontierTrace(data.frontiers.shallow, "Shallow Market", "#b65a35"),
-      frontierTrace(data.frontiers.deep, "Deep Market", "#0f6b5e"),
+      frontierTrace(shallow, "Shallow Market", "#b65a35"),
+      frontierTrace(deep, "Deep Market", "#0f6b5e"),
     ],
     baseLayout("EV Sacrificed", "Tail Reduction"),
     { displayModeBar: false, responsive: true },
@@ -397,15 +411,23 @@ function formatCurrency(value) {
  * @param {number} value
  */
 function formatFraction(value) {
-  return value.toFixed(2);
+  return Number.isFinite(value) ? value.toFixed(2) : "0.00";
 }
 
 function normalizeDistributionResponse(payload) {
   return {
     ...payload,
-    requestedHedgeFraction: readFractionField(payload, "requestedHedgeFraction", "requested_hedge_fraction"),
-    effectiveHedgeFraction: readFractionField(payload, "effectiveHedgeFraction", "effective_hedge_fraction"),
+    requestedHedgeFraction: readFractionField(payload, "requestedHedgeFraction", "requested_hedge_fraction", "hedge_fraction"),
+    effectiveHedgeFraction: readFractionField(
+      payload,
+      "effectiveHedgeFraction",
+      "effective_hedge_fraction",
+      "requested_hedge_fraction",
+      "hedge_fraction",
+    ),
     liquidityBinding: readBooleanField(payload, "liquidityBinding", "liquidity_binding"),
+    unhedged: normalizeHistogram(payload?.unhedged),
+    hedged: normalizeHistogram(payload?.hedged),
   };
 }
 
@@ -419,29 +441,102 @@ function normalizeCurveResponse(payload) {
         curve_points: Array.isArray(regime.curve_points) ? regime.curve_points.map((point) => normalizeCurvePoint(point)) : [],
       }))
     : [];
+  const normalizedRegimes = liquidityRegimes.length > 0 ? liquidityRegimes : buildFallbackLiquidityRegimes(curvePoints, payload);
   return {
     ...payload,
     curve_points: curvePoints,
-    liquidity_regimes: liquidityRegimes,
+    liquidity_regimes: normalizedRegimes,
   };
 }
 
 function normalizeCurvePoint(point) {
+  const requestedHedgeFraction = readFractionField(
+    point,
+    "requestedHedgeFraction",
+    "requested_hedge_fraction",
+    "optimalHedgeRatio",
+    "optimal_hedge_ratio",
+    "hedgeRatio",
+    "hedge_ratio",
+  );
+  const effectiveHedgeFraction = readFractionField(
+    point,
+    "effectiveHedgeFraction",
+    "effective_hedge_fraction",
+    "optimalHedgeRatio",
+    "optimal_hedge_ratio",
+    "hedgeRatio",
+    "hedge_ratio",
+    "requested_hedge_fraction",
+  );
+
   return {
     ...point,
-    requestedHedgeFraction: readFractionField(point, "requestedHedgeFraction", "requested_hedge_fraction"),
-    effectiveHedgeFraction: readFractionField(point, "effectiveHedgeFraction", "effective_hedge_fraction"),
+    liability: readNumberField(point, "liability"),
+    requestedHedgeFraction,
+    effectiveHedgeFraction,
     liquidityBinding: readBooleanField(point, "liquidityBinding", "liquidity_binding"),
   };
 }
 
-function readFractionField(source, camelKey, snakeKey) {
-  const raw = source?.[camelKey] ?? source?.[snakeKey] ?? 0;
-  return Number(raw) || 0;
+function normalizeHistogram(histogram) {
+  const counts = Array.isArray(histogram?.counts) ? histogram.counts.map((value) => Number(value) || 0) : [];
+  let binMids = Array.isArray(histogram?.bin_mids) ? histogram.bin_mids.map((value) => Number(value) || 0) : [];
+  const binEdges = Array.isArray(histogram?.bin_edges) ? histogram.bin_edges.map((value) => Number(value) || 0) : [];
+
+  if (binMids.length === 0 && binEdges.length > 1) {
+    binMids = binEdges.slice(0, -1).map((edge, index) => (edge + binEdges[index + 1]) / 2);
+  }
+
+  const length = Math.min(binMids.length, counts.length);
+  return {
+    ...histogram,
+    bin_mids: binMids.slice(0, length),
+    counts: counts.slice(0, length),
+  };
 }
 
-function readBooleanField(source, camelKey, snakeKey) {
-  return Boolean(source?.[camelKey] ?? source?.[snakeKey]);
+function buildFallbackLiquidityRegimes(curvePoints, payload) {
+  if (!curvePoints.length) {
+    return [];
+  }
+  return [
+    {
+      id: "medium",
+      label: "Effective Hedge %",
+      available_liquidity: payload?.liquidity_cap?.available_liquidity ?? null,
+      curve_points: curvePoints,
+    },
+  ];
+}
+
+function readFractionField(source, ...keys) {
+  for (const key of keys) {
+    const value = Number(source?.[key]);
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return 0;
+}
+
+function readNumberField(source, ...keys) {
+  for (const key of keys) {
+    const value = Number(source?.[key]);
+    if (Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return 0;
+}
+
+function readBooleanField(source, ...keys) {
+  for (const key of keys) {
+    if (key in (source ?? {})) {
+      return Boolean(source?.[key]);
+    }
+  }
+  return false;
 }
 
 function formatErrorDetail(error, fallback) {

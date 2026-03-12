@@ -243,6 +243,10 @@ class TestSimulatorRuntimeRoute:
         assert ".sim-footer" in css
         assert 'console.info("[simulator] resolved API base:", client.baseUrl, client.baseUrls);' in script
         assert "normalizeCurveResponse" in script
+        assert "normalizeHistogram" in script
+        assert "buildFallbackLiquidityRegimes" in script
+        assert '"requested_hedge_fraction"' in script
+        assert '"optimal_hedge_ratio"' in script
         assert "formatErrorDetail" in script
 
     def test_simulator_route_does_not_register_service_workers(self):
