@@ -6,228 +6,253 @@
     <title>EventRisk.ai The Mechanism</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:opsz@40&family=IBM+Plex+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Serif+Display:opsz@40&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles/eventrisk.css?v=__ASSET_VERSION__" />
-    <script src="__RUNTIME_CONFIG_SRC__"></script>
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-    <script type="module" src="/static/scripts/explainer.js?v=__ASSET_VERSION__"></script>
+    <script src="__RUNTIME_CONFIG_SRC__" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" defer></script>
+    <style>
+      .explainer-intro {
+        max-width: 720px;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+
+      .explainer-figure {
+        max-width: 860px;
+        margin: 3rem auto;
+        padding: 1.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+      }
+
+      .figure-caption {
+        font-style: italic;
+        opacity: 0.75;
+        margin-bottom: 1.25rem;
+      }
+
+      .chart-wrap {
+        position: relative;
+        height: 400px;
+      }
+
+      .slider-row {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin: 0.75rem 0;
+      }
+
+      .slider-row label {
+        min-width: 260px;
+        font-size: 0.9rem;
+      }
+
+      .slider-row input[type="range"] {
+        flex: 1;
+      }
+
+      .slider-row select {
+        min-width: 180px;
+      }
+
+      .slider-explainer {
+        font-size: 0.8rem;
+        opacity: 0.65;
+        font-style: italic;
+        margin: 0.25rem 0 1rem 0;
+        max-width: 680px;
+        line-height: 1.5;
+      }
+
+      #hedgeTable {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 1.25rem;
+        font-size: 0.875rem;
+      }
+
+      #hedgeTable th,
+      #hedgeTable td {
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        padding: 0.5rem 0.75rem;
+        text-align: right;
+      }
+
+      #hedgeTable th:first-child,
+      #hedgeTable td:first-child {
+        text-align: left;
+      }
+
+      @media (max-width: 700px) {
+        .slider-row {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .slider-row label {
+          min-width: 0;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div class="explainer-shell">
+    <div class="app-shell">
       <header class="top-nav">
         <a href="/explainer" class="wordmark">EventRisk</a>
         <nav class="nav-group">
           <a class="nav-link active" href="/explainer">The Mechanism</a>
           <a class="nav-link" href="/paper">The Analysis</a>
           <a class="nav-link" href="/simulator">Stress Test</a>
-          __PAPER_LINK_EXPLAINER_NAV__
+          __PAPER_LINK_PAPER_NAV__
         </nav>
       </header>
-
       <main class="page-main">
-        <section class="hero-band">
-          <div class="hero-copy">
-            <p class="eyebrow">Event contracts under liquidity constraints</p>
-            <h1>Six figures for how hedge capacity changes as market depth tightens.</h1>
-            <p class="hero-lede">
-              This explainer uses the paper-calibrated
-              <code>superbowl_v1</code> sportsbook baseline to show how concentrated downside changes as external
-              liquidity becomes available across tens to hundreds of millions of dollars in liability.
-            </p>
+        <div class="explainer-intro">
+          <p>
+            The figures below are the interactive versions of the charts published in the paper. Adjust the sliders to inspect the framework's assumptions and test its intuitive force. All figures are illustrative — they clarify comparative dynamics, not empirically calibrated sportsbook financials.
+          </p>
+        </div>
+
+        <section class="explainer-figure">
+          <h2>Figure 1 — Sportsbook Hedging Feasibility Map</h2>
+          <p class="figure-caption">Hedging viability depends jointly on sportsbook liability and available event-market liquidity — shallow markets support little or no hedging for large liabilities.</p>
+          <div class="slider-row">
+            <label for="scaleSlider">Liquidity Scale Factor: <span id="scaleVal">1.0</span></label>
+            <input id="scaleSlider" type="range" min="0.5" max="2.0" value="1.0" step="0.1" />
           </div>
-
-          <aside class="hero-aside">
-            <p class="aside-label">Scenario</p>
-            <p class="aside-value">Paper-calibrated Super Bowl baseline</p>
-            <p class="aside-meta" id="seedNote">Seed <code>superbowl_v1</code> · Liability $136,000,000 · Requested hedge 60%</p>
-          </aside>
-        </section>
-
-        <section class="controls-bar" aria-label="Explainer controls">
-          <div class="step-indicator" aria-label="Explainer progress">
-            <button class="step-dot active" type="button" data-step-target="0" aria-label="Go to Step 1"></button>
-            <button class="step-dot" type="button" data-step-target="1" aria-label="Go to Step 2"></button>
-            <button class="step-dot" type="button" data-step-target="2" aria-label="Go to Step 3"></button>
-          </div>
-
-          <div class="persistent-controls">
-            <div class="segmented-control" aria-label="Strategy toggle" id="strategyToggle">
-              <button type="button" class="segment active" data-strategy="external_hedge">External Hedge</button>
-              <button type="button" class="segment" data-strategy="internal_reprice">Internal Reprice</button>
-              <button type="button" class="segment" data-strategy="hybrid">Hybrid</button>
-            </div>
+          <p class="slider-explainer">
+            This scales the liquidity thresholds that define the hedging zones.
+            At 1.0×, the boundaries reflect baseline market conditions from the paper.
+            Moving left (below 1.0×) simulates a thinner market where meaningful hedging
+            requires more liquidity relative to liability — the zones compress downward.
+            Moving right (above 1.0×) simulates a deeper market where even large liabilities
+            fall within the partial or meaningful hedging region.
+          </p>
+          <div class="chart-wrap">
+            <canvas id="chart1"></canvas>
           </div>
         </section>
 
-        <section class="snap-deck" id="snapDeck">
-          <article class="snap-step" data-step-index="0" id="step1">
-            <div class="step-copy">
-              <p class="step-kicker">Step 1</p>
-              <h2 class="step-title">Unhedged Baseline</h2>
-              <p class="step-subtitle">
-                Before any transfer, a skewed book carries concentrated downside. The canonical histogram below shows
-                the unhedged P&amp;L distribution for the bundled paper baseline.
-              </p>
-            </div>
-
-            <div class="figure-card">
-              <div class="chart-stage" data-panel="step1">
-                <div class="chart-skeleton" data-skeleton="step1" aria-hidden="true">
-                  <span></span><span></span><span></span><span></span>
-                </div>
-                <div class="chart-error" data-error="step1" hidden>
-                  <strong>Simulation unavailable — try refreshing.</strong>
-                </div>
-                <div class="chart-plot" data-plot="step1" hidden></div>
-              </div>
-
-              <div class="metrics-row">
-                <article class="metric-card">
-                  <p class="metric-label">Expected Value</p>
-                  <p class="metric-value" id="step1Ev">—</p>
-                </article>
-                <article class="metric-card">
-                  <p class="metric-label">Expected Worst-Case Loss</p>
-                  <p class="metric-value" id="step1Cvar">—</p>
-                </article>
-                <article class="metric-card">
-                  <p class="metric-label">Max Loss</p>
-                  <p class="metric-value" id="step1Max">—</p>
-                </article>
-              </div>
-
-              <aside class="annotation">
-                <p>
-                  Tail exposure: the concentrated downside a sportsbook cannot eliminate with line moves alone.
-                </p>
-              </aside>
-            </div>
-          </article>
-
-          <article class="snap-step" data-step-index="1" id="step2">
-            <div class="step-copy">
-              <p class="step-kicker">Step 2</p>
-              <h2 class="step-title">Hedged vs. Unhedged Overlay</h2>
-              <p class="step-subtitle">
-                The default strategy is External Hedge. Switching strategy updates the bundled overlay and keeps the
-                focus on left-tail compression rather than EV maximization.
-              </p>
-            </div>
-
-            <div class="figure-card">
-              <div class="chart-stage" data-panel="step2">
-                <div class="chart-skeleton" data-skeleton="step2" aria-hidden="true">
-                  <span></span><span></span><span></span><span></span>
-                </div>
-                <div class="chart-error" data-error="step2" hidden>
-                  <strong>Simulation unavailable — try refreshing.</strong>
-                </div>
-                <div class="chart-plot" data-plot="step2" hidden></div>
-              </div>
-
-              <div class="metrics-row metrics-row-wide">
-                <article class="metric-card">
-                  <p class="metric-label">Unhedged CVaR-95</p>
-                  <p class="metric-value" id="step2UnhedgedCvar">—</p>
-                </article>
-                <article class="metric-card">
-                  <p class="metric-label">Hedged CVaR-95</p>
-                  <p class="metric-value" id="step2HedgedCvar">—</p>
-                </article>
-                <article class="metric-card">
-                  <p class="metric-label">Unhedged Max Loss</p>
-                  <p class="metric-value" id="step2UnhedgedMax">—</p>
-                </article>
-                <article class="metric-card">
-                  <p class="metric-label">Hedged Max Loss</p>
-                  <p class="metric-value" id="step2HedgedMax">—</p>
-                </article>
-                <article class="metric-card accent-card">
-                  <p class="metric-label">Tail Reduction</p>
-                  <p class="metric-value" id="step2TailReduction">—</p>
-                </article>
-              </div>
-
-              <aside class="annotation">
-                <p>
-                  Tail compression, not EV improvement, is the economic purpose at work. This left-tail shift is
-                  what matters for capital and regulatory analysis.
-                </p>
-              </aside>
-            </div>
-          </article>
-
-          <article class="snap-step" data-step-index="2" id="step3">
-            <div class="step-copy">
-              <p class="step-kicker">Step 3</p>
-              <h2 class="step-title">Deterministic Hedge Capacity Curve</h2>
-              <p class="step-subtitle">
-                Effective hedge capacity is the executable share of exposure after finite market depth is applied.
-                The deterministic curve compares low, medium, and high liquidity regimes from the same underlying cap function.
-              </p>
-            </div>
-
-            <div class="figure-card">
-              <div class="zone-legend">
-                <span class="zone-tag zone-meaningful">Meaningful hedging</span>
-                <span class="zone-tag zone-partial">Partial hedging</span>
-                <span class="zone-tag zone-constrained">No effective hedging</span>
-              </div>
-
-              <div class="chart-stage" data-panel="step3">
-                <div class="chart-skeleton" data-skeleton="step3" aria-hidden="true">
-                  <span></span><span></span><span></span><span></span>
-                </div>
-                <div class="chart-error" data-error="step3" hidden>
-                  <strong>Simulation unavailable — try refreshing.</strong>
-                </div>
-                <div class="chart-plot" data-plot="step3" hidden></div>
-              </div>
-
-              <div class="metrics-row">
-                <article class="metric-card">
-                  <p class="metric-label">Requested Hedge Fraction</p>
-                  <p class="metric-value" id="step3MetricValue">—</p>
-                </article>
-                <article class="metric-card">
-                  <p class="metric-label">Effective Hedge Fraction</p>
-                  <p class="metric-value" id="step3HedgeRatio">—</p>
-                </article>
-                <article class="metric-card">
-                  <p class="metric-label">Liquidity Binding</p>
-                  <p class="metric-value" id="step3BindingCount">—</p>
-                </article>
-              </div>
-
-              <aside class="annotation">
-                <p>Liquidity, not optimization, governs practical hedge capacity in the paper model.</p>
-              </aside>
-
-              <div class="cta-card">
-                <strong>Continue to the live Stress Test or open the paper.</strong>
-                <div class="cta-actions">
-                  <a class="cta-link" href="/simulator">Open Stress Test</a>
-                  __PAPER_LINK_EXPLAINER_CTA__
-                </div>
-              </div>
-            </div>
-          </article>
+        <section class="explainer-figure">
+          <h2>Figure 2 — Liquidity-Constrained Event Risk Transfer Curve</h2>
+          <p class="figure-caption">Higher market liquidity flattens the decay of hedgeable fraction — in deep markets, larger liabilities remain meaningfully hedgeable.</p>
+          <p class="slider-explainer">
+            k is the liquidity depth parameter for each market regime. It controls how
+            quickly the hedgeable fraction decays as sportsbook liability grows. A low k
+            means hedging capacity drops off steeply — even modest liabilities become
+            largely unhedgeable. A high k means the curve flattens, so larger liabilities
+            remain meaningfully hedgeable. Increase k to simulate a deeper, more liquid
+            market; decrease it to simulate a thinner one.
+          </p>
+          <div class="slider-row">
+            <label for="kLowSlider">Low Liquidity Depth (k): <span id="kLowVal">20</span></label>
+            <input id="kLowSlider" type="range" min="10" max="40" value="20" step="1" />
+          </div>
+          <div class="slider-row">
+            <label for="kMedSlider">Medium Liquidity Depth (k): <span id="kMedVal">50</span></label>
+            <input id="kMedSlider" type="range" min="30" max="80" value="50" step="1" />
+          </div>
+          <div class="slider-row">
+            <label for="kHighSlider">High Liquidity Depth (k): <span id="kHighVal">120</span></label>
+            <input id="kHighSlider" type="range" min="80" max="200" value="120" step="1" />
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart2"></canvas>
+          </div>
         </section>
 
-        <nav class="controls-fixed" aria-label="Step controls">
-          <button class="nav-btn" id="btnBack" type="button">Back</button>
-          <button class="nav-btn" id="btnNext" type="button">Next</button>
-        </nav>
+        <section class="explainer-figure">
+          <h2>Figure 3 — Sportsbook Risk Profile Under Hedging</h2>
+          <p class="figure-caption">Deep-liquidity hedging compresses worst-case downside materially while preserving a broadly similar expected-value profile.</p>
+          <div class="slider-row">
+            <label for="hedgeSlider">Hedge Ratio: <span id="hedgeVal">1.00</span></label>
+            <input id="hedgeSlider" type="range" min="0.0" max="1.0" value="1.0" step="0.05" />
+          </div>
+          <p class="slider-explainer">
+            The hedge ratio represents the fraction of available hedging capacity that the
+            sportsbook actually uses. At 1.0, the book hedges as much as market depth
+            allows. At 0.0, no hedge is placed and all three lines converge to the unhedged
+            outcome. Intermediate values simulate partial hedging — for example, a book that
+            hedges only its largest marquee-event exposures.
+          </p>
+          <div class="chart-wrap">
+            <canvas id="chart3"></canvas>
+          </div>
+          <table id="hedgeTable">
+            <thead>
+              <tr>
+                <th>Scenario</th>
+                <th>Expected Value</th>
+                <th>Worst-Case Loss (95%)</th>
+                <th>Maximum Loss</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Unhedged</td>
+                <td id="tableUnhedgedEv"></td>
+                <td id="tableUnhedgedWcl"></td>
+                <td id="tableUnhedgedMax"></td>
+              </tr>
+              <tr>
+                <td>Shallow hedge</td>
+                <td id="tableShallowEv"></td>
+                <td id="tableShallowWcl"></td>
+                <td id="tableShallowMax"></td>
+              </tr>
+              <tr>
+                <td>Deep hedge</td>
+                <td id="tableDeepEv"></td>
+                <td id="tableDeepWcl"></td>
+                <td id="tableDeepMax"></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="explainer-figure">
+          <h2>Figure 4 — Tail-Risk Compression from Event-Market Hedging</h2>
+          <p class="figure-caption">Hedging shifts the left tail of the P&amp;L distribution inward, reducing the frequency and severity of catastrophic-loss outcomes.</p>
+          <div class="slider-row">
+            <label for="liquiditySelect">Liquidity Regime</label>
+            <select id="liquiditySelect">
+              <option value="55">Low</option>
+              <option value="45" selected>Medium</option>
+              <option value="38">High</option>
+            </select>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="chart4"></canvas>
+          </div>
+        </section>
+
+        <section class="explainer-figure">
+          <h2>Figure 5 — Hedging Efficiency Frontier</h2>
+          <p class="figure-caption">Better market depth improves the tradeoff between expected value retained and tail-risk reduced — the deep-liquidity frontier lies outward from the shallow-liquidity frontier.</p>
+          <div class="slider-row">
+            <label for="depthSlider">Market Depth Multiplier: <span id="depthVal">1.0</span></label>
+            <input id="depthSlider" type="range" min="0.5" max="2.0" value="1.0" step="0.1" />
+          </div>
+          <p class="slider-explainer">
+            This scales the slope of both efficiency frontiers simultaneously. At 1.0×, the
+            frontiers reflect the paper's baseline assumptions. Moving right increases the
+            tail-risk reduction achievable per dollar of expected value sacrificed —
+            simulating a market environment where hedging is cheaper and more efficient.
+            Moving left compresses both frontiers toward the origin, simulating a market
+            where hedging is costly relative to the protection it provides.
+          </p>
+          <div class="chart-wrap">
+            <canvas id="chart5"></canvas>
+          </div>
+        </section>
       </main>
-
       <footer class="page-footer">
         Citation: EventRisk.ai (2026). Risk Transfer Under Liquidity Constraints.
-        __PAPER_LINK_EXPLAINER_FOOTER__
+        __PAPER_LINK_PAPER_FOOTER__
         __VERSION_STAMP__
       </footer>
     </div>
+    <script type="module" src="/static/scripts/explainer.js?v=__ASSET_VERSION__"></script>
   </body>
 </html>

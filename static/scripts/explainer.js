@@ -1,508 +1,427 @@
-// @ts-check
-
-import { buildRegimeCurves } from "/static/scripts/hedge-capacity.mjs";
-import { applyViewState } from "/static/scripts/view-state.mjs";
-import { CANONICAL_EXPLAINER_SCENARIO, EXPLAINER_STATIC_DATA } from "/static/scripts/explainer-static-data.mjs";
-
-const STRATEGY_LABELS = {
-  external_hedge: "External Hedge",
-  internal_reprice: "Internal Reprice",
-  hybrid: "Hybrid",
-};
-const CAPACITY_METRIC = {
-  label: "Effective Hedge Fraction",
-  accessor: (point) => point.effective_hedge_fraction * 100,
-  axis: "Hedgeable fraction of exposure (%)",
-  hover: ".1f",
-};
-const state = {
-  activeStep: 0,
-  strategy: "external_hedge",
+const COLORS = {
+  low: "#4e79a7",
+  medium: "#f28e2b",
+  high: "#59a14f",
 };
 
-const refs = {
-  deck: /** @type {HTMLElement} */ (document.getElementById("snapDeck")),
-  back: /** @type {HTMLButtonElement} */ (document.getElementById("btnBack")),
-  next: /** @type {HTMLButtonElement} */ (document.getElementById("btnNext")),
-  seedNote: document.getElementById("seedNote"),
-  stepDots: Array.from(document.querySelectorAll("[data-step-target]")),
-  strategyButtons: Array.from(document.querySelectorAll("[data-strategy]")),
-  steps: Array.from(document.querySelectorAll("[data-step-index]")),
-  plots: {
-    step1: /** @type {HTMLElement} */ (document.querySelector('[data-plot="step1"]')),
-    step2: /** @type {HTMLElement} */ (document.querySelector('[data-plot="step2"]')),
-    step3: /** @type {HTMLElement} */ (document.querySelector('[data-plot="step3"]')),
-  },
-  skeletons: {
-    step1: /** @type {HTMLElement} */ (document.querySelector('[data-skeleton="step1"]')),
-    step2: /** @type {HTMLElement} */ (document.querySelector('[data-skeleton="step2"]')),
-    step3: /** @type {HTMLElement} */ (document.querySelector('[data-skeleton="step3"]')),
-  },
-  errors: {
-    step1: /** @type {HTMLElement} */ (document.querySelector('[data-error="step1"]')),
-    step2: /** @type {HTMLElement} */ (document.querySelector('[data-error="step2"]')),
-    step3: /** @type {HTMLElement} */ (document.querySelector('[data-error="step3"]')),
-  },
-  metrics: {
-    step1Ev: document.getElementById("step1Ev"),
-    step1Cvar: document.getElementById("step1Cvar"),
-    step1Max: document.getElementById("step1Max"),
-    step2UnhedgedCvar: document.getElementById("step2UnhedgedCvar"),
-    step2HedgedCvar: document.getElementById("step2HedgedCvar"),
-    step2UnhedgedMax: document.getElementById("step2UnhedgedMax"),
-    step2HedgedMax: document.getElementById("step2HedgedMax"),
-    step2TailReduction: document.getElementById("step2TailReduction"),
-    step3MetricValue: document.getElementById("step3MetricValue"),
-    step3HedgeRatio: document.getElementById("step3HedgeRatio"),
-    step3BindingCount: document.getElementById("step3BindingCount"),
-  },
-};
+const LIABILITY_STEPS_F1 = Array.from({ length: 10 }, (_, index) => (index + 1) * 20);
+const LIABILITY_STEPS_F2 = Array.from({ length: 41 }, (_, index) => index * 5);
+const LIABILITY_STEPS_F3 = Array.from({ length: 17 }, (_, index) => 40 + index * 10);
+const BINS_F4 = Array.from({ length: 31 }, (_, index) => -150 + index * 10);
+const EVS_F5 = Array.from({ length: 21 }, (_, index) => index);
 
-init().catch((error) => {
-  console.error(error);
+document.addEventListener("DOMContentLoaded", () => {
+  const refs = buildRefs();
+  const charts = initializeCharts(refs);
+  bindControls(refs, charts);
+  syncAll(refs, charts);
 });
 
-async function init() {
-  bindEvents();
-  updateControlUi();
-  resetMetricText();
-  renderStaticScenario(state.strategy);
+function buildRefs() {
+  return {
+    scaleSlider: document.getElementById("scaleSlider"),
+    scaleVal: document.getElementById("scaleVal"),
+    kLowSlider: document.getElementById("kLowSlider"),
+    kLowVal: document.getElementById("kLowVal"),
+    kMedSlider: document.getElementById("kMedSlider"),
+    kMedVal: document.getElementById("kMedVal"),
+    kHighSlider: document.getElementById("kHighSlider"),
+    kHighVal: document.getElementById("kHighVal"),
+    hedgeSlider: document.getElementById("hedgeSlider"),
+    hedgeVal: document.getElementById("hedgeVal"),
+    liquiditySelect: document.getElementById("liquiditySelect"),
+    depthSlider: document.getElementById("depthSlider"),
+    depthVal: document.getElementById("depthVal"),
+    tableUnhedgedEv: document.getElementById("tableUnhedgedEv"),
+    tableUnhedgedWcl: document.getElementById("tableUnhedgedWcl"),
+    tableUnhedgedMax: document.getElementById("tableUnhedgedMax"),
+    tableShallowEv: document.getElementById("tableShallowEv"),
+    tableShallowWcl: document.getElementById("tableShallowWcl"),
+    tableShallowMax: document.getElementById("tableShallowMax"),
+    tableDeepEv: document.getElementById("tableDeepEv"),
+    tableDeepWcl: document.getElementById("tableDeepWcl"),
+    tableDeepMax: document.getElementById("tableDeepMax"),
+  };
 }
 
-function bindEvents() {
-  refs.back.addEventListener("click", () => goToStep(state.activeStep - 1));
-  refs.next.addEventListener("click", () => goToStep(state.activeStep + 1));
-
-  refs.stepDots.forEach((button) => {
-    button.addEventListener("click", () => {
-      const index = Number(button.getAttribute("data-step-target"));
-      goToStep(index);
-    });
-  });
-
-  refs.strategyButtons.forEach((button) => {
-    button.addEventListener("click", async () => {
-      const strategy = button.getAttribute("data-strategy");
-      if (!strategy || strategy === state.strategy) {
-        return;
-      }
-
-      state.strategy = strategy;
-      updateControlUi();
-      renderStaticScenario(strategy);
-    });
-  });
-
-  refs.deck.addEventListener("scroll", syncStepFromScroll, { passive: true });
-
-  let touchStartY = 0;
-  refs.deck.addEventListener(
-    "touchstart",
-    (event) => {
-      touchStartY = event.touches[0]?.clientY ?? 0;
-    },
-    { passive: true },
-  );
-  refs.deck.addEventListener(
-    "touchend",
-    (event) => {
-      const touchEndY = event.changedTouches[0]?.clientY ?? touchStartY;
-      const delta = touchStartY - touchEndY;
-      if (Math.abs(delta) < 50) {
-        return;
-      }
-      goToStep(state.activeStep + (delta > 0 ? 1 : -1));
-    },
-    { passive: true },
-  );
-
-  window.addEventListener("resize", debounce(() => updateAllChartsFromCache(), 120));
+function initializeCharts() {
+  return {
+    chart1: createFigure1Chart(),
+    chart2: createFigure2Chart(),
+    chart3: createFigure3Chart(),
+    chart4: createFigure4Chart(),
+    chart5: createFigure5Chart(),
+  };
 }
 
-function renderStaticScenario(strategy) {
-  const scenario = EXPLAINER_STATIC_DATA[strategy] ?? CANONICAL_EXPLAINER_SCENARIO;
-  renderStaticStep1(scenario);
-  renderStaticStep2(scenario);
-  renderStaticStep3(scenario);
+function bindControls(refs, charts) {
+  refs.scaleSlider.addEventListener("input", () => syncFigure1(refs, charts.chart1));
+  refs.kLowSlider.addEventListener("input", () => syncFigure2(refs, charts.chart2));
+  refs.kMedSlider.addEventListener("input", () => syncFigure2(refs, charts.chart2));
+  refs.kHighSlider.addEventListener("input", () => syncFigure2(refs, charts.chart2));
+  refs.hedgeSlider.addEventListener("input", () => syncFigure3(refs, charts.chart3));
+  refs.liquiditySelect.addEventListener("change", () => syncFigure4(refs, charts.chart4));
+  refs.depthSlider.addEventListener("input", () => syncFigure5(refs, charts.chart5));
 }
 
-function renderHistogram({ host, title, primaryName, primaryColor, primary, secondaryName, secondaryColor, secondary, annotationLabel, annotationValue }) {
-  const traces = [
-    {
-      x: primary.bin_mids,
-      y: primary.counts,
-      type: "bar",
-      name: primaryName,
-      marker: { color: primaryColor, opacity: 0.62 },
-      hovertemplate: `${primaryName}<br>P&L: %{x:$,.2f}<br>Paths: %{y}<extra></extra>`,
-    },
-  ];
-
-  if (secondary) {
-    traces.push({
-      x: secondary.bin_mids,
-      y: secondary.counts,
-      type: "bar",
-      name: secondaryName,
-      marker: { color: secondaryColor, opacity: 0.58 },
-      hovertemplate: `${secondaryName}<br>P&L: %{x:$,.2f}<br>Paths: %{y}<extra></extra>`,
-    });
-  }
-
-  const maxCount = Math.max(...primary.counts, ...(secondary?.counts ?? [0]));
-  const annotations = [
-    {
-      x: annotationValue,
-      y: maxCount * 0.9,
-      text: annotationLabel,
-      showarrow: true,
-      arrowhead: 4,
-      ax: 24,
-      ay: -38,
-      font: { color: "#edf2ff", family: "IBM Plex Mono, monospace", size: 11 },
-      arrowcolor: primaryColor,
-      bgcolor: "rgba(10, 14, 26, 0.78)",
-      bordercolor: "rgba(146, 166, 198, 0.22)",
-    },
-  ];
-
-  if (secondary) {
-    annotations.push({
-      x: secondary.cvar_95,
-      y: maxCount * 0.66,
-      text: `${secondaryName} CVaR-95`,
-      showarrow: true,
-      arrowhead: 4,
-      ax: -24,
-      ay: -28,
-      font: { color: "#edf2ff", family: "IBM Plex Mono, monospace", size: 11 },
-      arrowcolor: secondaryColor,
-      bgcolor: "rgba(10, 14, 26, 0.78)",
-      bordercolor: "rgba(146, 166, 198, 0.22)",
-    });
-  }
-
-  window.Plotly.react(
-    host,
-    traces,
-    {
-      ...baseLayout(title, "P&L outcome", "Path count"),
-      barmode: secondary ? "overlay" : "relative",
-      xaxis: {
-        title: "P&L outcome ($)",
-        tickformat: "$,.0f",
-        gridcolor: "rgba(156, 171, 205, 0.08)",
-        zeroline: false,
-      },
-      yaxis: {
-        title: "Path count",
-        gridcolor: "rgba(156, 171, 205, 0.08)",
-        zeroline: false,
-      },
-      annotations,
-    },
-    { displayModeBar: false, responsive: true },
-  );
+function syncAll(refs, charts) {
+  syncFigure1(refs, charts.chart1);
+  syncFigure2(refs, charts.chart2);
+  syncFigure3(refs, charts.chart3);
+  syncFigure4(refs, charts.chart4);
+  syncFigure5(refs, charts.chart5);
 }
 
-function renderStaticStep1(preset) {
-  renderStaticDistribution({
-    host: refs.plots.step1,
-    title: "Unhedged P&L Distribution",
-    bins: preset.step1.bins,
-    primaryName: "Unhedged",
-    primaryValues: preset.step1.unhedged_density,
-    primaryColor: "#e8ae52",
-    annotationValue: preset.step1.cvar95_m,
-    annotationLabel: "Tail exposure",
-  });
-
-  refs.metrics.step1Ev.textContent = formatCurrencyMillions(preset.step1.ev_m);
-  refs.metrics.step1Cvar.textContent = formatCurrencyMillions(preset.step1.cvar95_m);
-  refs.metrics.step1Max.textContent = formatCurrencyMillions(preset.step1.max_loss_m);
-  setStepState("step1", "ready");
-}
-
-function renderStaticStep2(preset) {
-  renderStaticDistribution({
-    host: refs.plots.step2,
-    title: "Hedged vs. Unhedged Overlay",
-    bins: preset.step2.bins,
-    primaryName: "Unhedged",
-    primaryValues: preset.step2.unhedged_density,
-    primaryColor: "#e8ae52",
-    secondaryName: "Hedged",
-    secondaryValues: preset.step2.hedged_density,
-    secondaryColor: "#5bc6c4",
-    annotationValue: preset.step2.cvar95_hedged_m,
-    annotationLabel: "CVaR-95 shift",
-  });
-
-  refs.metrics.step2UnhedgedCvar.textContent = formatCurrencyMillions(preset.step2.cvar95_unhedged_m);
-  refs.metrics.step2HedgedCvar.textContent = formatCurrencyMillions(preset.step2.cvar95_hedged_m);
-  refs.metrics.step2UnhedgedMax.textContent = formatCurrencyMillions(preset.step2.max_loss_unhedged_m);
-  refs.metrics.step2HedgedMax.textContent = formatCurrencyMillions(preset.step2.max_loss_hedged_m);
-  refs.metrics.step2TailReduction.textContent = `${preset.step2.tail_reduction_pct.toFixed(1)}%`;
-  setStepState("step2", "ready");
-}
-
-function renderStaticStep3(preset) {
-  const liabilities = preset.step3.liabilities_m.map((value) => value * 1_000_000);
-  const regimes = buildRegimeCurves(liabilities, preset.meta.target_hedge_ratio, preset.meta.liquidity_usd);
-  renderPresetCurve(regimes);
-  const medium = regimes.find((regime) => regime.id === "medium");
-  const points = medium ? medium.curve_points : [];
-  const lastPoint = points[points.length - 1];
-  const bindingCount = points.filter((point) => point.liquidity_binding).length;
-  refs.metrics.step3MetricValue.textContent = `${Math.round(lastPoint.requested_hedge_fraction * 100)}%`;
-  refs.metrics.step3HedgeRatio.textContent = `${Math.round(lastPoint.effective_hedge_fraction * 100)}%`;
-  refs.metrics.step3BindingCount.textContent = bindingCount > 0 ? `Yes (${bindingCount}/${points.length})` : "No";
-  setStepState("step3", "ready");
-}
-
-function renderStaticDistribution({ host, title, bins, primaryName, primaryValues, primaryColor, secondaryName, secondaryValues, secondaryColor, annotationValue, annotationLabel }) {
-  const traces = [
-    {
-      x: bins,
-      y: primaryValues,
-      type: "scatter",
-      mode: "lines",
-      name: primaryName,
-      line: { color: primaryColor, width: 3 },
-      fill: "tozeroy",
-      fillcolor: `${primaryColor}33`,
-      hovertemplate: `${primaryName}<br>P&L: %{x:.0f}M<br>Density: %{y:.2f}<extra></extra>`,
-    },
-  ];
-
-  if (secondaryValues && secondaryName && secondaryColor) {
-    traces.push({
-      x: bins,
-      y: secondaryValues,
-      type: "scatter",
-      mode: "lines",
-      name: secondaryName,
-      line: { color: secondaryColor, width: 3 },
-      fill: "tozeroy",
-      fillcolor: `${secondaryColor}29`,
-      hovertemplate: `${secondaryName}<br>P&L: %{x:.0f}M<br>Density: %{y:.2f}<extra></extra>`,
-    });
-  }
-
-  window.Plotly.react(
-    host,
-    traces,
-    {
-      ...baseLayout(title, "P&L outcome (USD, millions)", "Density"),
-      annotations: [
+// Figure 1 — Sportsbook Hedging Feasibility Map
+// The map is built from three deterministic boundaries. As liability grows,
+// the minimum liquidity needed to move from "no effective hedging" to
+// "partial" and then "meaningful" hedging scales upward proportionally.
+// The slider multiplies those boundaries to show how overall market depth
+// shifts the zone cutoffs without changing the basic geometry.
+function createFigure1Chart() {
+  return new Chart(document.getElementById("chart1"), {
+    type: "line",
+    data: {
+      labels: LIABILITY_STEPS_F1,
+      datasets: [
         {
-          x: annotationValue,
-          y: Math.max(...primaryValues) * 0.9,
-          text: annotationLabel,
-          showarrow: true,
-          arrowhead: 4,
-          ax: 24,
-          ay: -38,
-          font: { color: "#edf2ff", family: "IBM Plex Mono, monospace", size: 11 },
-          arrowcolor: primaryColor,
-          bgcolor: "rgba(10, 14, 26, 0.78)",
-          bordercolor: "rgba(146, 166, 198, 0.22)",
+          label: "No effective hedging",
+          data: [],
+          borderColor: "rgba(220,80,80,0)",
+          backgroundColor: "rgba(220,80,80,0.25)",
+          pointRadius: 0,
+          borderWidth: 0,
+          fill: "origin",
+          tension: 0.2,
+        },
+        {
+          label: "Partial hedging",
+          data: [],
+          borderColor: "rgba(251,180,43,0)",
+          backgroundColor: "rgba(251,180,43,0.25)",
+          pointRadius: 0,
+          borderWidth: 0,
+          fill: "-1",
+          tension: 0.2,
+        },
+        {
+          label: "Meaningful hedging",
+          data: [],
+          borderColor: "rgba(89,161,79,0)",
+          backgroundColor: "rgba(89,161,79,0.25)",
+          pointRadius: 0,
+          borderWidth: 0,
+          fill: "-1",
+          tension: 0.2,
         },
       ],
     },
-    { displayModeBar: false, responsive: true },
-  );
+    options: lineOptions("Sportsbook Liability ($M)", "Event-Market Liquidity ($M)", {
+      scales: {
+        x: {
+          title: { display: true, text: "Sportsbook Liability ($M)" },
+        },
+        y: {
+          min: 0,
+          max: 120,
+          title: { display: true, text: "Event-Market Liquidity ($M)" },
+        },
+      },
+    }),
+  });
 }
 
-function renderPresetCurve(regimes) {
-  window.Plotly.react(
-    refs.plots.step3,
-    regimes.map((regime) => ({
-        x: regime.curve_points.map((point) => point.liability / 1_000_000),
-        y: regime.curve_points.map((point) => CAPACITY_METRIC.accessor(point)),
-        type: "scatter",
-        mode: "lines+markers",
-        name: regime.label,
-        line: {
-          color: regime.id === "low" ? "#e8ae52" : regime.id === "medium" ? "#5bc6c4" : "#8ab4ff",
-          width: regime.id === "medium" ? 3 : 2,
-        },
-        marker: {
-          size: 9,
-          color: regime.curve_points.map((point) => (point.liquidity_binding ? "#e8ae52" : "#5bc6c4")),
-          line: { width: 1, color: "#0a0e1a" },
-        },
-        hovertemplate:
-          "Liability: %{x:.0f}M<br>" +
-          `${CAPACITY_METRIC.label}: %{y:.1f}%<br>` +
-          "Requested hedge: %{customdata[0]:.0%}<br>" +
-          "Effective hedge: %{customdata[1]:.0%}<extra></extra>",
-        customdata: regime.curve_points.map((point) => [point.requested_hedge_fraction, point.effective_hedge_fraction]),
-      })),
-    {
-      ...baseLayout("Deterministic Hedge Capacity Curve", "Sportsbook liability (USD, millions)", "Hedgeable fraction of exposure (%)"),
-      annotations: [
-        zoneLabel("Meaningful hedging", 0.16),
-        zoneLabel("Partial hedging", 0.5),
-        zoneLabel("No effective hedging", 0.84),
+function syncFigure1(refs, chart) {
+  const scale = Number(refs.scaleSlider.value);
+  refs.scaleVal.textContent = scale.toFixed(1);
+  chart.data.datasets[0].data = LIABILITY_STEPS_F1.map((x) => round2(0.08 * scale * x));
+  chart.data.datasets[1].data = LIABILITY_STEPS_F1.map((x) => round2(0.5 * scale * x));
+  chart.data.datasets[2].data = LIABILITY_STEPS_F1.map(() => 120);
+  chart.update();
+}
+
+// Figure 2 — LCERT Curve
+// Each curve uses exponential decay: h(L) = exp(-L/k)
+// k is the "liquidity depth" parameter. Higher k = slower decay = more of the
+// exposure remains hedgeable at larger liability sizes.
+// The sliders let the user shift each k independently to see how market depth
+// changes each curve's slope and persistence.
+function createFigure2Chart() {
+  return new Chart(document.getElementById("chart2"), {
+    type: "line",
+    data: {
+      labels: LIABILITY_STEPS_F2,
+      datasets: [
+        curveDataset("Low liquidity", COLORS.low),
+        curveDataset("Medium liquidity", COLORS.medium),
+        curveDataset("High liquidity", COLORS.high),
       ],
-      yaxis: {
-        title: "Hedgeable fraction of exposure (%)",
-        tickformat: ",.0f",
-        gridcolor: "rgba(156, 171, 205, 0.1)",
-        zeroline: false,
-        range: [0, 100],
+    },
+    options: lineOptions("Sportsbook Liability ($M)", "Hedgeable Fraction of Exposure", {
+      scales: {
+        x: {
+          title: { display: true, text: "Sportsbook Liability ($M)" },
+        },
+        y: {
+          min: 0,
+          max: 1,
+          title: { display: true, text: "Hedgeable Fraction of Exposure" },
+        },
       },
-      xaxis: {
-        title: "Sportsbook liability (USD, millions)",
-        tickformat: ",.0f",
-        gridcolor: "rgba(156, 171, 205, 0.08)",
-        zeroline: false,
+    }),
+  });
+}
+
+function syncFigure2(refs, chart) {
+  const kLow = Number(refs.kLowSlider.value);
+  const kMed = Number(refs.kMedSlider.value);
+  const kHigh = Number(refs.kHighSlider.value);
+
+  refs.kLowVal.textContent = String(kLow);
+  refs.kMedVal.textContent = String(kMed);
+  refs.kHighVal.textContent = String(kHigh);
+
+  chart.data.datasets[0].data = LIABILITY_STEPS_F2.map((liability) => round4(Math.exp(-liability / kLow)));
+  chart.data.datasets[1].data = LIABILITY_STEPS_F2.map((liability) => round4(Math.exp(-liability / kMed)));
+  chart.data.datasets[2].data = LIABILITY_STEPS_F2.map((liability) => round4(Math.exp(-liability / kHigh)));
+  chart.update();
+}
+
+// Figure 3 — Sportsbook Risk Profile Under Hedging
+// Each line starts from the same unhedged sportsbook loss slope and then
+// applies a deterministic hedge-efficiency multiplier. Shallow liquidity
+// only trims a small portion of downside, while deep liquidity produces a
+// materially larger compression as the hedge ratio increases.
+// The table below converts the same hedge ratio into fixed summary metrics at
+// a representative liability level of $100M.
+function createFigure3Chart() {
+  return new Chart(document.getElementById("chart3"), {
+    type: "line",
+    data: {
+      labels: LIABILITY_STEPS_F3,
+      datasets: [
+        curveDataset("Unhedged", COLORS.low),
+        curveDataset("Shallow hedge", COLORS.medium),
+        curveDataset("Deep hedge", COLORS.high),
+      ],
+    },
+    options: lineOptions("Sportsbook Liability ($M)", "Profit / Loss ($M)", {
+      scales: {
+        x: {
+          title: { display: true, text: "Sportsbook Liability ($M)" },
+        },
+        y: {
+          min: -130,
+          max: 0,
+          title: { display: true, text: "Profit / Loss ($M)" },
+        },
+      },
+    }),
+  });
+}
+
+function syncFigure3(refs, chart) {
+  const hedgeRatio = Number(refs.hedgeSlider.value);
+  refs.hedgeVal.textContent = hedgeRatio.toFixed(2);
+
+  chart.data.datasets[0].data = LIABILITY_STEPS_F3.map((liability) => round2(-0.66 * liability));
+  chart.data.datasets[1].data = LIABILITY_STEPS_F3.map((liability) => round2(-0.66 * liability * (1 - 0.05 * hedgeRatio)));
+  chart.data.datasets[2].data = LIABILITY_STEPS_F3.map((liability) => round2(-0.66 * liability * (1 - 0.27 * hedgeRatio)));
+  chart.update();
+
+  refs.tableUnhedgedEv.textContent = formatSignedMillions(-66);
+  refs.tableUnhedgedWcl.textContent = formatSignedMillions(-120);
+  refs.tableUnhedgedMax.textContent = formatSignedMillions(-130);
+
+  refs.tableShallowEv.textContent = formatSignedMillions(-66 * (1 - 0.05 * hedgeRatio));
+  refs.tableShallowWcl.textContent = formatSignedMillions(-120 * (1 - 0.02 * hedgeRatio));
+  refs.tableShallowMax.textContent = formatSignedMillions(-130 * (1 - 0.08 * hedgeRatio));
+
+  refs.tableDeepEv.textContent = formatSignedMillions(-66 * (1 - 0.10 * hedgeRatio));
+  refs.tableDeepWcl.textContent = formatSignedMillions(-120 * (1 - 0.23 * hedgeRatio));
+  refs.tableDeepMax.textContent = formatSignedMillions(-130 * (1 - 0.32 * hedgeRatio));
+}
+
+// Figure 4 — Tail-Risk Compression from Event-Market Hedging
+// The two distributions are deterministic normal PDFs evaluated at fixed
+// bin midpoints. The unhedged distribution stays fixed, while the hedged
+// distribution narrows as the selected liquidity regime improves.
+// Lower standard deviation means the left tail is pulled inward and extreme
+// loss outcomes become less dense.
+function createFigure4Chart() {
+  return new Chart(document.getElementById("chart4"), {
+    type: "bar",
+    data: {
+      labels: BINS_F4,
+      datasets: [
+        {
+          label: "Unhedged",
+          data: BINS_F4.map((bin) => round6(normalPdf(bin, -20, 60))),
+          backgroundColor: "rgba(78,121,167,0.6)",
+          barPercentage: 1,
+          categoryPercentage: 1,
+        },
+        {
+          label: "Hedged",
+          data: [],
+          backgroundColor: "rgba(89,161,79,0.6)",
+          barPercentage: 1,
+          categoryPercentage: 1,
+        },
+      ],
+    },
+    options: barOptions("P&L Bin ($M)", "Density"),
+  });
+}
+
+function syncFigure4(refs, chart) {
+  const adjustedStd = Number(refs.liquiditySelect.value);
+  chart.data.datasets[1].data = BINS_F4.map((bin) => round6(normalPdf(bin, -18, adjustedStd)));
+  chart.update();
+}
+
+// Figure 5 — Hedging Efficiency Frontier
+// The frontier is a simple linear tradeoff between expected value sacrificed
+// and tail-risk reduction. The shallow frontier improves at a lower rate,
+// while the deep frontier gains more tail protection per unit of EV cost.
+// The market-depth multiplier scales both frontiers together so users can see
+// how stronger depth pushes the efficient boundary outward.
+function createFigure5Chart() {
+  return new Chart(document.getElementById("chart5"), {
+    type: "line",
+    data: {
+      labels: EVS_F5,
+      datasets: [
+        curveDataset("Shallow", COLORS.medium),
+        curveDataset("Deep", COLORS.high),
+      ],
+    },
+    options: lineOptions("Expected Value Sacrificed (M)", "Tail-Risk Reduction (M)", {
+      scales: {
+        x: {
+          min: 0,
+          max: 20,
+          title: { display: true, text: "Expected Value Sacrificed (M)" },
+        },
+        y: {
+          min: 0,
+          max: 25,
+          title: { display: true, text: "Tail-Risk Reduction (M)" },
+        },
+      },
+    }),
+  });
+}
+
+function syncFigure5(refs, chart) {
+  const multiplier = Number(refs.depthSlider.value);
+  refs.depthVal.textContent = multiplier.toFixed(1);
+  chart.data.datasets[0].data = EVS_F5.map((evs) => round2(0.5 * multiplier * evs));
+  chart.data.datasets[1].data = EVS_F5.map((evs) => round2(1.25 * multiplier * evs));
+  chart.update();
+}
+
+function curveDataset(label, color) {
+  return {
+    label,
+    data: [],
+    borderColor: color,
+    backgroundColor: color,
+    borderWidth: 3,
+    pointRadius: 0,
+    tension: 0.25,
+  };
+}
+
+function lineOptions(xLabel, yLabel, overrides = {}) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "nearest", intersect: false },
+    plugins: {
+      legend: {
+        labels: {
+          color: getTextColor(),
+        },
       },
     },
-    { displayModeBar: false, responsive: true },
-  );
+    scales: {
+      x: {
+        title: { display: true, text: xLabel, color: getTextColor() },
+        ticks: { color: getMutedColor() },
+        grid: { color: getGridColor() },
+      },
+      y: {
+        title: { display: true, text: yLabel, color: getTextColor() },
+        ticks: { color: getMutedColor() },
+        grid: { color: getGridColor() },
+      },
+    },
+    ...overrides,
+  };
 }
 
-function baseLayout(title, xTitle, yTitle) {
+function barOptions(xLabel, yLabel) {
   return {
-    title: { text: title, font: { family: "DM Serif Display, serif", size: 24, color: "#edf2ff" } },
-    paper_bgcolor: "rgba(0,0,0,0)",
-    plot_bgcolor: "rgba(0,0,0,0)",
-    margin: { l: 56, r: 24, t: 54, b: 52 },
-    font: { family: "IBM Plex Mono, monospace", color: "#edf2ff", size: 12 },
-    legend: {
-      orientation: "h",
-      x: 0,
-      y: 1.12,
-      bgcolor: "rgba(0,0,0,0)",
-      font: { family: "IBM Plex Mono, monospace", color: "#9cabca", size: 11 },
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        labels: {
+          color: getTextColor(),
+        },
+      },
     },
-    xaxis: {
-      title: xTitle,
-      color: "#9cabca",
-      tickcolor: "rgba(146, 166, 198, 0.22)",
-      titlefont: { family: "IBM Plex Mono, monospace", size: 12, color: "#9cabca" },
-    },
-    yaxis: {
-      title: yTitle,
-      color: "#9cabca",
-      tickcolor: "rgba(146, 166, 198, 0.22)",
-      titlefont: { family: "IBM Plex Mono, monospace", size: 12, color: "#9cabca" },
+    scales: {
+      x: {
+        stacked: false,
+        title: { display: true, text: xLabel, color: getTextColor() },
+        ticks: { color: getMutedColor() },
+        grid: { color: getGridColor() },
+      },
+      y: {
+        title: { display: true, text: yLabel, color: getTextColor() },
+        ticks: { color: getMutedColor() },
+        grid: { color: getGridColor() },
+      },
     },
   };
 }
 
-function updateAllChartsFromCache() {
-  renderStaticScenario(state.strategy);
+function normalPdf(x, mean, std) {
+  const coefficient = 1 / (std * Math.sqrt(2 * Math.PI));
+  const exponent = -0.5 * Math.pow((x - mean) / std, 2);
+  return coefficient * Math.exp(exponent);
 }
 
-function setStepState(step, status) {
-  const plot = refs.plots[step];
-  const skeleton = refs.skeletons[step];
-  const error = refs.errors[step];
-  if (!plot || !skeleton || !error) {
-    return;
+function formatSignedMillions(value) {
+  const rounded = Math.round(value * 100) / 100;
+  if (rounded < 0) {
+    return `-$${Math.abs(rounded)}M`;
   }
-
-  applyViewState({ plot, skeleton, error }, status);
+  return `$${rounded}M`;
 }
 
-function goToStep(index) {
-  const nextIndex = Math.max(0, Math.min(index, refs.steps.length - 1));
-  state.activeStep = nextIndex;
-  refs.deck.scrollTo({ top: refs.steps[nextIndex].offsetTop, behavior: "smooth" });
-  updateControlUi();
+function round2(value) {
+  return Math.round(value * 100) / 100;
 }
 
-function syncStepFromScroll() {
-  const deckRect = refs.deck.getBoundingClientRect();
-  const deckMidpoint = deckRect.top + deckRect.height / 2;
-  let candidate = 0;
-  let bestDistance = Number.POSITIVE_INFINITY;
-  refs.steps.forEach((step, index) => {
-    const rect = step.getBoundingClientRect();
-    const midpointDistance = Math.abs(rect.top + rect.height / 2 - deckMidpoint);
-    if (midpointDistance < bestDistance) {
-      candidate = index;
-      bestDistance = midpointDistance;
-    }
-  });
-
-  if (candidate !== state.activeStep) {
-    state.activeStep = candidate;
-    updateControlUi();
-  }
+function round4(value) {
+  return Math.round(value * 10000) / 10000;
 }
 
-function updateControlUi() {
-  refs.back.disabled = state.activeStep === 0;
-  refs.next.disabled = state.activeStep === refs.steps.length - 1;
-  refs.seedNote.textContent = `Seed superbowl_v1 · Paper-calibrated liability $136M · Strategy ${STRATEGY_LABELS[state.strategy]}`;
-
-  refs.stepDots.forEach((button, index) => {
-    button.classList.toggle("active", index === state.activeStep);
-  });
-
-  refs.strategyButtons.forEach((button) => {
-    button.classList.toggle("active", button.getAttribute("data-strategy") === state.strategy);
-  });
+function round6(value) {
+  return Math.round(value * 1000000) / 1000000;
 }
 
-function buildZoneShapes(values) {
-  const maxValue = Math.max(...values, 1);
-  return [
-    zoneRect(0, maxValue / 3, "rgba(50, 143, 114, 0.18)"),
-    zoneRect(maxValue / 3, (maxValue * 2) / 3, "rgba(214, 170, 79, 0.16)"),
-    zoneRect((maxValue * 2) / 3, maxValue, "rgba(156, 69, 76, 0.16)"),
-  ];
+function getTextColor() {
+  return document.body.classList.contains("light") ? "#1f2937" : "#edf2ff";
 }
 
-function zoneRect(y0, y1, color) {
-  return {
-    type: "rect",
-    xref: "paper",
-    yref: "y",
-    x0: 0,
-    x1: 1,
-    y0,
-    y1,
-    fillcolor: color,
-    line: { width: 0 },
-    layer: "below",
-  };
+function getMutedColor() {
+  return document.body.classList.contains("light") ? "rgba(31,41,55,0.72)" : "rgba(237,242,255,0.72)";
 }
 
-function zoneLabel(text, yPosition) {
-  return {
-    xref: "paper",
-    yref: "paper",
-    x: 0.02,
-    y: 1 - yPosition,
-    text,
-    showarrow: false,
-    font: { family: "IBM Plex Mono, monospace", size: 11, color: "#9cabca" },
-    bgcolor: "rgba(10, 14, 26, 0.35)",
-  };
-}
-
-function resetMetricText() {
-  Object.values(refs.metrics).forEach((node) => {
-    if (node) {
-      node.textContent = "—";
-    }
-  });
-}
-
-function formatCurrencyMillions(value) {
-  const sign = value < 0 ? "-" : "";
-  return `${sign}$${Math.abs(value).toFixed(1)}M`;
-}
-
-function debounce(fn, waitMs) {
-  let timer = 0;
-  return () => {
-    window.clearTimeout(timer);
-    timer = window.setTimeout(() => fn(), waitMs);
-  };
+function getGridColor() {
+  return document.body.classList.contains("light") ? "rgba(15,23,42,0.1)" : "rgba(255,255,255,0.08)";
 }
