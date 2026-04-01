@@ -1,0 +1,13 @@
+.git
+.replit
+.claude
+node_modules
+app/
+dashboard/
+__pycache__
+*.pyc
+.env
+*.egg-info
+.mypy_cache
+.pytest_cache
+tmp/
