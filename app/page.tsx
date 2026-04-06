@@ -6,6 +6,7 @@ import StatsBar from "./components/StatsBar";
 import ProbabilityTable from "./components/ProbabilityTable";
 import ChartsWrapper from "./components/ChartsWrapper";
 import { ClientDate } from "./components/ClientDate";
+import AnalyticsEvents from "./components/AnalyticsEvents";
 
 export default function Dashboard() {
   const events = enrichEvents();
@@ -50,6 +51,7 @@ export default function Dashboard() {
         </div>
       </header>
 
+      <AnalyticsEvents />
       <main className="max-w-screen-xl mx-auto px-4 sm:px-6 py-5 space-y-4">
         <AlertBanner alerts={alerts} />
         <StatsBar events={events} />

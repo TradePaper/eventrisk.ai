@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import type { TimePoint, SportEvent } from "@/lib/mockData";
 import { useState } from "react";
+import { captureParameterChanged } from "@/lib/analytics";
 
 interface Props {
   data: TimePoint[];
@@ -42,7 +43,9 @@ export default function DivergenceTimeSeries({ data, events, eventColors }: Prop
   function toggle(id: string) {
     setHidden((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      const willShow = next.has(id);
+      willShow ? next.delete(id) : next.add(id);
+      captureParameterChanged({ parameter_name: "chart_line_toggle", parameter_value: `${id}:${willShow ? "show" : "hide"}`, simulator_version: "1.0.0" });
       return next;
     });
   }

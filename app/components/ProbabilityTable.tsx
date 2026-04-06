@@ -4,6 +4,7 @@ import type { EnrichedEvent } from "@/lib/mockData";
 import { useState } from "react";
 import clsx from "clsx";
 import { ClientTime } from "./ClientDate";
+import { captureParameterChanged } from "@/lib/analytics";
 
 interface Props {
   events: EnrichedEvent[];
@@ -59,6 +60,7 @@ export default function ProbabilityTable({ events }: Props) {
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortDir((d) => (d === 1 ? -1 : 1));
     else { setSortKey(key); setSortDir(-1); }
+    captureParameterChanged({ parameter_name: "sort_column", parameter_value: key, simulator_version: "1.0.0" });
   }
 
   const sorted = [...events].sort((a, b) => {
@@ -77,7 +79,7 @@ export default function ProbabilityTable({ events }: Props) {
     "px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-300 transition-colors";
 
   return (
-    <div className="bg-[#161b22] border border-[#21262d] rounded-lg overflow-hidden">
+    <div className="bg-[#161b22] border border-[#21262d] rounded-lg overflow-hidden" data-analytics="probability-table">
       <div className="px-4 py-3 border-b border-[#21262d] flex items-center gap-2">
         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
         <span className="text-sm font-semibold text-gray-300">Live Probability Comparison</span>
