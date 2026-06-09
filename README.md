@@ -162,7 +162,7 @@ npm run dev
 General Counsel | Blockchain, Digital Assets & Finance
 
 - [kvladvisory.com](https://kvladvisory.com)
-- [LinkedIn](https://linkedin.com/in/davidtkuhn)
+- [LinkedIn](https://www.linkedin.com/in/david-t-kuhn/)
 - [TCFramework.com](https://tcframework.com) — Token Continuity Framework (companion research)
 
 ## License
