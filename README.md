@@ -79,37 +79,49 @@ flowchart LR
 
 ## Tech Stack
 
-- **Frontend:** Next.js 14 (React 18, TypeScript), Tailwind CSS 4
+- **Server:** FastAPI (Python) — `catalog_app.py` serves both the frontend pages and the JSON API, run under uvicorn
+- **Frontend (deployed):** Static HTML + vanilla JavaScript (ES modules) served by FastAPI — no framework build step
 - **Charting:** Chart.js (explainer), Plotly.js (paper figures + simulator)
-- **Simulation:** Python (NumPy, FastAPI) — liquidity-aware Monte Carlo with seeded determinism
+- **Simulation:** Python (NumPy) — liquidity-aware Monte Carlo with seeded determinism (`core/`)
 - **Data providers:** Polymarket, Kalshi (with mock fallback)
-- **Analytics:** PostHog
-- **Deployment:** Vercel
+- **Analytics:** PostHog (via `static/analytics.js`)
+- **Deployment:** Railway (Dockerfile, `python:3.11-slim`)
+
+> **Note:** The repo also contains a Next.js 14 app under `app/` (React/TypeScript, with its own PostHog wiring). This is a work-in-progress alternate frontend — it is **not built or deployed**. The Dockerfile runs only the FastAPI server, which serves the `static/` pages.
 
 ## Project Structure
 
 ```
-app/                        # Next.js application layer
-static/
+catalog_app.py              # FastAPI app — deployed entrypoint; serves static pages + JSON API
+Dockerfile                  # Railway build (python:3.11-slim → uvicorn catalog_app:app)
+railway.json                # Railway config (Dockerfile builder)
+requirements.txt            # fastapi, uvicorn, numpy, plotly, httpx, pydantic, ...
+static/                     # Deployed frontend (served by FastAPI)
+  index.html                # ProbEdge sportsbook hedge simulator (home)
   explainer.html            # "The Mechanism" — interactive parameter explorer
   paper.html                # "The Analysis" — paper figure reproductions
   simulator.html            # "Stress Test" — Monte Carlo simulator
+  event-markets.html        # Event Markets Intelligence
+  probability-gap.html      # Probability Gap Dashboard
+  catalog.html              # Event Contract Library
+  backtest.html             # Historical Backtesting
+  reports.html              # Weekly Reports
+  scripts/                  # Vanilla ES-module logic (simulator-app, api-client, hedge-capacity, ...)
+  styles/                   # global.css, eventrisk.css, simulator.css
+  analytics.js              # PostHog wiring (window.probedge.track)
   paper.pdf                 # Full research paper
-  scripts/
-    explainer.js            # Chart.js visualization logic
-    paper.js                # Plotly figure rendering with presets
-    simulator-app.mjs       # Simulation engine + Plotly output
-    api-client.mjs          # REST API client for live simulation
-    hedge-capacity.mjs      # Hedge capacity calculations
-  styles/
-    eventrisk.css           # Site-wide theme
-    simulator.css           # Simulator-specific styles
-core/                       # v1.2 simulation engine (Python)
+core/                       # Python simulation engine
   types_v12.py              # Dataclasses: SimulationInput, StrategyMetrics, LiquidityModel
   liquidity.py              # Hedge cap, market impact, effective cost rate
   metrics.py                # CVaR at configurable alpha
   strategies.py             # Strategy implementations
   optimizer.py              # Grid-search optimizer + risk transfer curve builder
+  divergence.py             # Sportsbook vs market divergence analysis
+  feasibility.py            # Hedge feasibility checks
+  frontier.py               # Risk/return frontier construction
+  paper_math.py             # Paper figure computations
+providers/                  # Market data providers (polymarket, kalshi, mock)
+app/                        # Next.js 14 frontend — WORK IN PROGRESS, not built or deployed
 ```
 
 ## API
@@ -125,22 +137,23 @@ GET  /api/providers/health      # Provider health status
 
 ## Local Development
 
+Run the deployed app (FastAPI server — serves the pages and the API):
 ```bash
-git clone https://github.com/dtkuhn/eventrisk.ai.git
+git clone https://github.com/TradePaper/eventrisk.ai.git
 cd eventrisk.ai
-npm install
-npm run dev
-```
-
-Simulation engine:
-```bash
-pip install fastapi uvicorn numpy requests
-uvicorn catalog_app:app --host 0.0.0.0 --port 5000
+pip install -r requirements.txt
+uvicorn catalog_app:app --reload --port 8000    # http://localhost:8000
 ```
 
 Tests:
 ```bash
 python3 -m pytest tests/ -v    # 64/64 passing
+```
+
+Optional — the work-in-progress Next.js frontend under `app/` (not part of the deploy):
+```bash
+npm install
+npm run dev
 ```
 
 ## Author
