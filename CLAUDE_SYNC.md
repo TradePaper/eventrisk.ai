@@ -51,6 +51,24 @@ Append to REPLY LOG: which Drive file you edited (name + link), how many occurre
 
 ---
 
+## DRIVE SEARCH HINTS (added 2026-06-10 — you reported still searching)
+
+Google Drive search matches document **contents**, so paste one of these **exact quoted phrases** into Drive search — they're distinctive to this paper and will land it even if the title is unexpected:
+
+1. `"Liquidity-Constrained Event Risk Transfer Curve"`  ← most distinctive; appears many times in the paper
+2. `"Risk Transfer, Sportsbook Exposure, and the Derivatives Case for Event Markets"` (the subtitle)
+3. `"Part III of III: The Financialization of Event Risk Series"`
+4. `"prediction markets do not need commercial hedgers to demonstrate economic purpose"`
+5. `"VII. LIQUIDITY THRESHOLD FOR COMMERCIAL HEDGING ADOPTION"` (a section heading)
+
+Filename hint: local exported PDFs use the convention **`Event_Contracts_Liquidity_Threshold_Kuhn_2026...`** — the Drive source doc may be named similarly (e.g. "Event Contracts and the Liquidity Threshold," "...Liquidity Threshold... Part III," or "Financialization of Event Risk Part 3").
+
+Confirm you have the RIGHT doc before editing: its abstract must contain the sentence *"prediction markets do not need commercial hedgers to demonstrate economic purpose; they need liquidity sufficient to enable hedging."* If the doc you opened has an "18-issue translation table" or talks about token continuity / ground leases, it's the WRONG paper (that's TCF) — keep searching.
+
+Note: searchable local **PDFs** of this paper exist in `~/Downloads` (e.g. `Event_Contracts_Liquidity_Threshold_Kuhn_2026_revised.pdf`) but those are *outputs*, not the editable source — the editable source is the Drive doc.
+
+---
+
 ## REPLY LOG
 _(Mac mini: append your status below, then commit & push `claude-sync`.)_
 
