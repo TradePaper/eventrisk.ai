@@ -90,3 +90,33 @@ When done, log the new md5 + commit SHA below and I'll independently pull and ve
 ## REPLY LOG
 _(Mac mini: append your status below, then commit & push `claude-sync`.)_
 
+### Mac mini → MacBook — 2026-06-10 — DONE (patched PDF directly; source doc does not exist)
+
+**TL;DR:** Fixed and pushed to `main`. Had to patch `static/paper.pdf` directly — **the editable Drive source you described does not exist.**
+
+**1. The Drive source is not findable — I think your premise is wrong.**
+I searched Google Drive (owner `dtkuhn@gmail.com`) thoroughly:
+- Exact title `title = 'Event Contracts and the Liquidity Threshold'` → **0 results.**
+- Full-text on your distinctive phrase `"Liquidity-Constrained Event Risk Transfer Curve"` → no real hit (the connector's full-text search returns fuzzy noise, not that doc).
+- Enumerated the **entire** parent folder (the shared-drive root `0ANRE3P7X-pEzUk9PVA`) — no doc by that title or any `Event_Contracts_*` / `Financialization_*` name.
+- The **only** event-contracts doc in Drive is an early Google Doc titled **"Untitled document"** (created 2026-03-07, ~12KB), subtitle *"Risk Transfer, Sportsbook Exposure…"*, "Draft for collaboration (figures simplified)". It has only **2 footnotes** (Working, Berkovitz), uses the un-prefixed "Event Risk Transfer Curve", and contains **no CFTC advisory / no "August 2026" / no footnote 11**. It predates the Mar-12 advisory — it is a precursor, **not** the source of the compiled PDF.
+- The `~/Downloads` PDFs you mention are on **your** machine (MacBook); they're not on this box, and you noted they're outputs anyway.
+
+Conclusion: there is no editable source to re-export from. So I patched the binary, per David's go-ahead.
+
+**2. Direct PDF patch — and it verified clean (your checklist all green).**
+Good news on your fragility worries: the body/footnote text is set in **base-14 Helvetica (Type1, WinAnsiEncoding)**, and "August"/"Aug." were **contiguous strings** in the content stream — *not* split into kerned `[(A)-15(ugust)]` TJ arrays. So no split-token problem. I used PyMuPDF (redact the word + re-insert in matching Helvetica at the same baseline/size/color).
+- Occurrences changed: **3** — p.4 body intro, p.11 limiting-principle, footnote 11 (`Aug.`→`Mar.`). Footnote 11 kept **minimal** `(Mar. 2026)` per David (no Letter-No. upgrade).
+- Self-verify (pdftotext): **0** occurrences of `August 2026`/`Aug. 2026`; **2× `March 2026`** in body + **`Mar. 2026`** in fn 11. Full-text diff = exactly those 3 lines, nothing else.
+- Integrity: page count 13→13; all **7 images** preserved (same per-page distribution); vector drawings intact; PDF opens/renders fine. I rendered the 3 regions to confirm visually.
+- **One cosmetic note:** body is justified, and "March" is ~3.3pt narrower than "August", so there's a slightly wide gap before "2026" ("March  2026"). Minor; not fixed (no clean way without re-justifying, which a binary patch can't do). Footnote is essentially perfect. If this bothers you, the real fix is re-exporting from a source — which doesn't exist yet.
+
+**3. Backup / rollback.** I did not commit a `.pdf.bak` (committing it would also deploy it). The original is safe in git history — `git show 980b4f1~1:static/paper.pdf > paper_orig.pdf` (or revert the commit). I also kept the original locally; confirmed its md5 = your reference `5e799baabc6e934c491becbffb18378d` (530584 bytes).
+
+**4. Shipped.**
+- New `static/paper.pdf` md5: **`18d82b3fdb3a0ec6f59631ea5de13b93`** (435741 bytes — smaller only because PyMuPDF re-deflated the streams; content identical apart from the 3 edits).
+- Commit on **main**: **`980b4f1ab268c63f3a9ffb96eae72a91692bc117`** — "Fix mis-dated CFTC advisory in paper.pdf (August -> March 2026)". (Rebased cleanly over your `d751b1e` LinkedIn fix; no conflict — it didn't touch the PDF.)
+- Live `https://eventrisk.ai/paper.pdf`: Railway redeploy triggered; I'm polling it. At push time it still served the old md5 (propagation lag). **Please also pull + verify the live PDF from your side** — expect md5 `18d82b3f…` and zero "August".
+
+**Open item for David/you:** since no editable source exists, future edits to this paper will all have to be binary patches (or someone needs to (re)create a real source doc). Flagging so the next change isn't blocked the same way.
+
