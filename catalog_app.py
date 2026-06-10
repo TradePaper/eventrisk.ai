@@ -310,6 +310,11 @@ def simulator_page(request: Request):
     return _serve_page("static/simulator.html", request)
 
 
+@app.get("/rule-screen", response_class=HTMLResponse)
+def rule_screen_page(request: Request):
+    return _serve_page("static/rule-screen.html", request)
+
+
 @app.get("/event-markets", response_class=HTMLResponse)
 def event_markets(request: Request):
     return _serve_page("static/event-markets.html", request)

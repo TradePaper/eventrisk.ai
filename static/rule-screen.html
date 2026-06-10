@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EventRisk.ai § 40.11 Screen</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Serif+Display:opsz@40&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/static/styles/eventrisk.css?v=__ASSET_VERSION__" />
+    <script src="__RUNTIME_CONFIG_SRC__" defer></script>
+    <style>
+      .screen-intro {
+        max-width: 760px;
+        margin: 2rem auto 1rem;
+        padding: 0 1rem;
+      }
+
+      .screen-disclaimer {
+        max-width: 760px;
+        margin: 0 auto 2rem;
+        padding: 0.9rem 1.2rem;
+        border: 1px solid var(--border-strong);
+        border-radius: 10px;
+        background: var(--amber-soft);
+        font-size: 0.82rem;
+        line-height: 1.5;
+      }
+
+      .screen-step {
+        max-width: 860px;
+        margin: 2.25rem auto;
+        padding: 1.5rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 8px;
+      }
+
+      .screen-step h2 {
+        margin-top: 0;
+        font-family: var(--font-display);
+        font-weight: 400;
+      }
+
+      .step-caption {
+        font-style: italic;
+        opacity: 0.75;
+        margin-bottom: 1.25rem;
+      }
+
+      .rule-cite {
+        font-size: 0.78rem;
+        opacity: 0.65;
+      }
+
+      .preset-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+        max-width: 860px;
+        margin: 0 auto 0.5rem;
+        padding: 0 1rem;
+      }
+
+      .preset-btn {
+        background: var(--surface-strong);
+        color: var(--ink);
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-pill);
+        padding: 0.45rem 1rem;
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+
+      .preset-btn:hover {
+        border-color: var(--teal);
+      }
+
+      .field-row {
+        margin: 0.85rem 0;
+      }
+
+      .field-row label {
+        display: block;
+        margin-bottom: 0.3rem;
+        font-weight: 500;
+      }
+
+      .field-row select {
+        width: 100%;
+        max-width: 460px;
+        padding: 0.45rem 0.6rem;
+        background: var(--surface-strong);
+        color: var(--ink);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+      }
+
+      .check-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+        gap: 0.4rem 1.4rem;
+        margin: 0.75rem 0;
+      }
+
+      .check-item {
+        display: flex;
+        gap: 0.55rem;
+        align-items: flex-start;
+        font-size: 0.88rem;
+        line-height: 1.45;
+        padding: 0.35rem 0.4rem;
+        border-radius: 6px;
+      }
+
+      .check-item:hover {
+        background: var(--surface-soft);
+      }
+
+      .check-item input {
+        margin-top: 0.22rem;
+        flex-shrink: 0;
+      }
+
+      .factor-group-title {
+        margin: 1.4rem 0 0.2rem;
+        font-weight: 700;
+        letter-spacing: 0.4px;
+        text-transform: uppercase;
+        font-size: 0.78rem;
+        color: var(--ink-soft);
+      }
+
+      .factor-group-title.positive { color: var(--teal); }
+      .factor-group-title.negative { color: var(--amber); }
+
+      .slider-row {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        margin: 0.9rem 0;
+      }
+
+      .slider-row input[type="range"] {
+        max-width: 460px;
+      }
+
+      .hedge-readout {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+        margin-top: 1rem;
+      }
+
+      .hedge-card {
+        flex: 1 1 240px;
+        padding: 0.9rem 1.1rem;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-soft);
+      }
+
+      .hedge-card .label {
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        color: var(--ink-soft);
+      }
+
+      .hedge-card .value {
+        font-size: 1.5rem;
+        margin: 0.25rem 0;
+      }
+
+      .badge {
+        display: inline-block;
+        padding: 0.18rem 0.7rem;
+        border-radius: var(--radius-pill);
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+      }
+
+      .badge.meaningful { background: var(--green-zone); color: #7fe0b8; }
+      .badge.partial { background: var(--yellow-zone); color: #ecd28a; }
+      .badge.no_effective { background: var(--red-zone); color: #f2a08f; }
+      .badge.neutral { background: var(--surface-strong); color: var(--ink-soft); }
+
+      .verdict-panel {
+        max-width: 860px;
+        margin: 2.25rem auto 3rem;
+        padding: 1.5rem;
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        background: var(--surface);
+      }
+
+      .verdict-headline {
+        font-family: var(--font-display);
+        font-size: 1.5rem;
+        margin: 0 0 0.4rem;
+      }
+
+      .verdict-headline.outside { color: #7fe0b8; }
+      .verdict-headline.lower { color: #7fe0b8; }
+      .verdict-headline.elevated { color: #ecd28a; }
+      .verdict-headline.high { color: #f2a08f; }
+
+      .verdict-notes {
+        margin: 0.8rem 0;
+        padding-left: 1.2rem;
+      }
+
+      .verdict-notes li {
+        margin: 0.35rem 0;
+        font-size: 0.9rem;
+        line-height: 1.5;
+      }
+
+      .timeline-note {
+        margin-top: 1.1rem;
+        padding-top: 0.9rem;
+        border-top: 1px solid var(--border);
+        font-size: 0.8rem;
+        opacity: 0.75;
+        line-height: 1.55;
+      }
+
+      .copy-row {
+        margin-top: 1rem;
+      }
+
+      .copy-row button {
+        background: var(--surface-strong);
+        color: var(--ink);
+        border: 1px solid var(--border-strong);
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        cursor: pointer;
+      }
+
+      .copy-row button:hover {
+        border-color: var(--teal);
+      }
+
+      .summary-pre {
+        margin-top: 0.8rem;
+        padding: 1rem;
+        background: #060a13;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 0.74rem;
+        line-height: 1.5;
+        white-space: pre-wrap;
+        max-height: 320px;
+        overflow: auto;
+      }
+
+      .hidden-step {
+        opacity: 0.4;
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="top-nav">
+        <a href="/explainer" class="wordmark">EventRisk</a>
+        <nav class="nav-group">
+          <a class="nav-link" href="/explainer">The Mechanism</a>
+          <a class="nav-link" href="/paper">The Analysis</a>
+          <a class="nav-link" href="/simulator">Stress Test</a>
+          <a class="nav-link active" href="/rule-screen">§ 40.11 Screen</a>
+          __PAPER_LINK_PAPER_NAV__
+        </nav>
+      </header>
+      <main class="page-main">
+        <div class="screen-intro">
+          <h1>Proposed § 40.11 Contract Screen</h1>
+          <p>
+            On June 10, 2026, the CFTC proposed amendments to Regulation 40.11 and a new
+            Appendix F implementing the Commodity Exchange Act's Special Rule for event
+            contracts (CEA § 5c(c)(5)(C)): <em>Prediction Markets; Public Interest
+            Determinations</em>, RIN 3038-AF65. The proposal applies a three-step inquiry —
+            scope, enumerated activity, public interest — on a contract-by-contract basis.
+            This tool walks a contract design through the proposed framework as written,
+            and connects the proposal's hedging-utility factor to the liquidity-constrained
+            risk-transfer analysis developed in the paper.
+          </p>
+        </div>
+        <div class="screen-disclaimer">
+          This is an educational screen of a <strong>proposed</strong> rule — quotations are from the
+          Commission-approved pre-publication version (June 9, 2026), which is subject to
+          technical corrections and to change through the comment process. Outputs are a
+          structured reading of the proposal's factors, not legal advice and not a
+          prediction of any Commission determination. Consult counsel before relying on
+          any output.
+        </div>
+
+        <div class="preset-row" id="presetRow">
+          <span class="rule-cite" style="align-self:center;">Presets:</span>
+          <button class="preset-btn" data-preset="moneyline" type="button">NFL Moneyline (aggregate outcome)</button>
+          <button class="preset-btn" data-preset="microbet" type="button">Injury Micro-Market</button>
+          <button class="preset-btn" data-preset="cpi" type="button">CPI Release</button>
+        </div>
+
+        <section class="screen-step" id="step1">
+          <h2>Step 1 — Scope</h2>
+          <p class="step-caption">
+            The Special Rule reaches event contracts in excluded commodities based on an
+            occurrence, extent of an occurrence, or contingency (other than a price-based
+            measure). The proposal also lists categories the Commission preliminarily views
+            as generally <em>outside</em> the Special Rule.
+          </p>
+          <div class="field-row">
+            <label for="refCategory">What does the contract reference?</label>
+            <select id="refCategory">
+              <option value="sports">Sporting event (professional, collegiate, or e-sports)</option>
+              <option value="other_game">Other game (e.g., chess, poker, game-show outcome)</option>
+              <option value="econ">Economic indicator (CPI, GDP, jobless claims, home sales)</option>
+              <option value="fin">Financial indicator (fed funds rate, mortgage averages, broad stock index levels)</option>
+              <option value="fx">Foreign exchange rate or currency</option>
+              <option value="election">Political election result or political activity (votes, enactments, appointments)</option>
+              <option value="awards">Honor or award contest (nominations, wins, timing)</option>
+              <option value="other">Other real-world occurrence</option>
+            </select>
+          </div>
+          <p class="rule-cite">
+            Safe-list categories per the proposal's illustrative out-of-scope examples
+            (economic indicators, financial indicators, FX, election results and political
+            activities, awards contests). Out-of-scope contracts remain subject to the
+            generally applicable listing standards, including that contracts not be readily
+            susceptible to manipulation.
+          </p>
+        </section>
+
+        <section class="screen-step" id="step2">
+          <h2>Step 2 — Enumerated Activity</h2>
+          <p class="step-caption">
+            A contract "involves" an activity if its settlement is determined by an
+            occurrence, extent of an occurrence, or contingency <em>in the activity</em>
+            (proposed § 40.11(a)(3)). The inquiry looks at the underlying activity — the
+            game on the field — not the act of trading the contract.
+          </p>
+
+          <div class="field-row">
+            <label>
+              <input type="checkbox" id="involveTest" checked />
+              Settlement is determined by an occurrence or contingency in the referenced activity
+            </label>
+          </div>
+
+          <p class="factor-group-title">Primary "gaming" definition — proposed § 40.11(b) (all three elements required)</p>
+          <div class="check-grid">
+            <label class="check-item"><input type="checkbox" id="g1" checked /> Participants typically engage in the activity for recreation or to entertain others</label>
+            <label class="check-item"><input type="checkbox" id="g2" checked /> The activity is governed by rules</label>
+            <label class="check-item"><input type="checkbox" id="g3" checked /> Measurable occurrences or outcomes depend on participants' luck, skill, or athletic ability during the activity</label>
+          </div>
+
+          <p class="factor-group-title">Alternative definition (presented for comment) — both structural elements required</p>
+          <div class="check-grid">
+            <label class="check-item"><input type="checkbox" id="a1" checked /> The activity is created by its rules, and all participants whose conduct determines the outcome operate within the activity itself</label>
+            <label class="check-item"><input type="checkbox" id="a2" checked /> Participants, in their capacity as participants, have purposes defined by and internal to the activity</label>
+          </div>
+
+          <p class="factor-group-title">Other enumerated activities</p>
+          <div class="check-grid">
+            <label class="check-item"><input type="checkbox" id="enumUnlawful" /> Activity unlawful under federal or state law (the underlying activity itself — not the wager)</label>
+            <label class="check-item"><input type="checkbox" id="enumTAW" /> Terrorism, assassination, or war</label>
+          </div>
+        </section>
+
+        <section class="screen-step" id="step3">
+          <h2>Step 3 — Public Interest Factors</h2>
+          <p class="step-caption">
+            If a contract involves an enumerated activity, the Commission weighs general
+            factors (proposed § 40.11(a)(5)) and activity-specific factors (proposed
+            § 40.11(a)(6)) on balance; no single factor is dispositive.
+          </p>
+
+          <p class="factor-group-title positive">Gaming-specific positive factors — § 40.11(a)(6)(iii)(A)</p>
+          <div class="check-grid">
+            <label class="check-item"><input class="pos" type="checkbox" id="p1" /> Settles on aggregate outcomes (final scores, point differentials, win-loss, tournament advancement, statistical or season-long performance)</label>
+            <label class="check-item"><input class="pos" type="checkbox" id="p2" /> Settles on an individual's aggregate statistical performance over a game</label>
+            <label class="check-item"><input class="pos" type="checkbox" id="p3" /> Objectively determinable settlement data (publicly reported or league-verified)</label>
+            <label class="check-item"><input class="pos" type="checkbox" id="p4" /> Underlying game has an established integrity framework (governing body, integrity unit, published rules, discipline)</label>
+            <label class="check-item"><input class="pos" type="checkbox" id="p5" /> Formal information-sharing arrangements with the league or integrity monitor</label>
+            <label class="check-item"><input class="pos" type="checkbox" id="p6" /> Exchange maintains appropriate surveillance and trading prohibitions</label>
+          </div>
+
+          <p class="factor-group-title negative">Gaming-specific negative factors — § 40.11(a)(6)(iii)(B)</p>
+          <div class="check-grid">
+            <label class="check-item"><input class="neg" type="checkbox" id="n1" /> Game depends entirely on random chance</label>
+            <label class="check-item"><input class="neg" type="checkbox" id="n2" /> Settles solely on player injuries (duration, severity, occurrence, diagnosis)</label>
+            <label class="check-item"><input class="neg" type="checkbox" id="n3" /> Settles solely on officiating judgment calls (penalties, fouls, replay decisions, ejections)</label>
+            <label class="check-item"><input class="neg" type="checkbox" id="n4" /> Settles solely on a discrete action, event, or occurrence in a game</label>
+            <label class="check-item"><input class="neg" type="checkbox" id="n5" /> Settles solely on physical altercations or penalized conduct</label>
+            <label class="check-item"><input class="neg" type="checkbox" id="n6" /> References games below the collegiate level</label>
+          </div>
+
+          <p class="factor-group-title">General concerns — § 40.11(a)(5)(ii)–(iii)</p>
+          <div class="check-grid">
+            <label class="check-item"><input class="concern" type="checkbox" id="c1" /> Particular susceptibility to manipulation or market disruption</label>
+            <label class="check-item"><input class="concern" type="checkbox" id="c2" /> Settlement-integrity deficits from the contract's particular characteristics</label>
+            <label class="check-item"><input class="concern" type="checkbox" id="c3" /> Particular risk of insider exploitation of material non-public information</label>
+            <label class="check-item"><input class="concern" type="checkbox" id="c4" /> Trading would challenge the exchange's self-regulatory or compliance infrastructure</label>
+          </div>
+
+          <p class="factor-group-title positive">Hedging and price-basing utility — § 40.11(a)(5)(i)</p>
+          <p class="rule-cite">
+            The proposal states that demonstrated hedging is not required, but that a
+            "reasonable potential for a hedging or pricing function would be a significant
+            factor against" an adverse finding, assessed by whether contracts "can
+            meaningfully facilitate risk transfer and price discovery." The model below
+            applies the paper's liquidity-constrained transfer analysis: hedge capacity is a
+            joint function of the hedger's concentrated liability and market depth, so the
+            inquiry should be run at reasonably foreseeable mature depth, not only at
+            listing-day depth.
+          </p>
+
+          <div class="field-row">
+            <label for="hedgerClass">Identifiable class of potential commercial hedgers</label>
+            <select id="hedgerClass">
+              <option value="identified">Identified (e.g., licensed sportsbooks warehousing exposure to this outcome)</option>
+              <option value="plausible">Plausible but unconfirmed</option>
+              <option value="none">None apparent</option>
+            </select>
+          </div>
+
+          <div class="slider-row">
+            <label for="liabilitySlider">Representative concentrated liability: <span id="liabilityVal">$100M</span></label>
+            <input id="liabilitySlider" type="range" min="1" max="250" step="1" value="100" />
+          </div>
+          <div class="slider-row">
+            <label for="depthNowSlider">Market depth at listing: <span id="depthNowVal">$5M</span></label>
+            <input id="depthNowSlider" type="range" min="0" max="100" step="1" value="35" />
+          </div>
+          <div class="slider-row">
+            <label for="depthMatureSlider">Reasonably foreseeable mature depth: <span id="depthMatureVal">$60M</span></label>
+            <input id="depthMatureSlider" type="range" min="0" max="100" step="1" value="76" />
+          </div>
+          <div class="slider-row">
+            <label for="hedgeFracSlider">Requested hedge fraction: <span id="hedgeFracVal">60%</span></label>
+            <input id="hedgeFracSlider" type="range" min="0" max="100" step="5" value="60" />
+          </div>
+
+          <div class="hedge-readout">
+            <div class="hedge-card">
+              <div class="label">Effective hedge fraction — at listing</div>
+              <div class="value" id="effNow">—</div>
+              <span class="badge neutral" id="classNow">—</span>
+            </div>
+            <div class="hedge-card">
+              <div class="label">Effective hedge fraction — foreseeable mature depth</div>
+              <div class="value" id="effMature">—</div>
+              <span class="badge neutral" id="classMature">—</span>
+            </div>
+          </div>
+          <p class="rule-cite">
+            Classification thresholds from the paper: effective hedge fraction below 10% =
+            no effective hedging; below 40% = partial; 40% and above = meaningful.
+            Illustrative dynamics — not calibrated to any firm's financials.
+          </p>
+        </section>
+
+        <section class="verdict-panel" id="verdictPanel">
+          <h2 class="verdict-headline" id="verdictHeadline">—</h2>
+          <p id="verdictSub" class="step-caption"></p>
+          <ul class="verdict-notes" id="verdictNotes"></ul>
+          <div class="timeline-note">
+            Procedural posture under the proposal: Commission review may be initiated only by
+            a non-delegable written determination within 10 days of listing; a 90-day review
+            clock follows (extensions only by or with the registered entity's agreement);
+            suspension during review is by Commission request, not command; if no order
+            issues, the review is deemed concluded and the contract may trade. Orders
+            require written findings weighing the factors on both sides and explaining
+            consistency with precedent.
+          </div>
+          <div class="copy-row">
+            <button id="copySummary" type="button">Copy screen summary</button>
+            <pre class="summary-pre" id="summaryPre"></pre>
+          </div>
+        </section>
+      </main>
+      <footer class="page-footer">
+        Citation: EventRisk.ai (2026). Risk Transfer Under Liquidity Constraints.
+        __PAPER_LINK_PAPER_FOOTER__
+        __VERSION_STAMP__
+      </footer>
+    </div>
+    <script type="module" src="/static/scripts/rule-screen.mjs?v=__ASSET_VERSION__"></script>
+  </body>
+</html>
