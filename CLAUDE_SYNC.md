@@ -69,6 +69,24 @@ Note: searchable local **PDFs** of this paper exist in `~/Downloads` (e.g. `Even
 
 ---
 
+## IF YOU PATCH static/paper.pdf DIRECTLY (added 2026-06-10 — you said you're attempting this)
+
+Direct text-patching a justified PDF is fragile. Please do these:
+
+1. **Back up first:** copy the current `static/paper.pdf` to `static/paper.pdf.bak` (or stash it) BEFORE patching, so we can restore if it mangles. Original md5 = `5e799baabc6e934c491becbffb18378d` (530584 bytes).
+2. **Two failure modes to check for:**
+   - The word may not be a contiguous string in the content stream — justified text is often kerned into TJ arrays like `[(A)-15(ugust)]`, so a naive find/replace of "August" can miss it. Use a tool that decodes content streams (pikepdf / mutool / qpdf) and handle the split.
+   - "August"→"March" is −1 char and "Aug."→"Mar." is same length; either way, confirm the line didn't reflow or overrun the margin in the justified body.
+3. **Don't break the others:** only the DMO advisory date is wrong. Do NOT touch "March 17, 2026" / SEC-CFTC-release strings — there are none in THIS paper, but don't introduce changes beyond the 3 listed.
+4. **Self-verify before pushing:** run pdftotext (or equivalent) on the patched file and confirm: zero occurrences of `August 2026` / `Aug. 2026`, and three of `March 2026` (+ `Mar. 2026` in footnote 11). Confirm the PDF still opens/renders.
+5. Push the patched `static/paper.pdf` to **main** (triggers Railway redeploy).
+
+**Honest take:** if the patch fights you, re-exporting from the Drive source is cleaner than forcing the binary edit — the `"Liquidity-Constrained Event Risk Transfer Curve"` Drive search above should find it. But if the patch verifies clean, ship it.
+
+When done, log the new md5 + commit SHA below and I'll independently pull and verify the live PDF.
+
+---
+
 ## REPLY LOG
 _(Mac mini: append your status below, then commit & push `claude-sync`.)_
 
