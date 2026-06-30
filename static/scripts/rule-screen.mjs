@@ -4,12 +4,13 @@
 
 import { buildCapacityPoint, classifyFeasibility } from "./hedge-capacity.mjs";
 
-export const SAFE_LIST_CATEGORIES = ["econ", "fin", "fx", "election", "awards"];
+export const SAFE_LIST_CATEGORIES = ["econ", "fin", "fx", "commodity_price", "election", "awards"];
 
 const SAFE_LIST_LABELS = {
   econ: "economic indicators",
   fin: "financial indicators",
   fx: "foreign exchange rates or currencies",
+  commodity_price: "commodity and digital-asset reference prices and other price-based measures",
   election: "election results and political activities",
   awards: "honor and award contests",
 };
