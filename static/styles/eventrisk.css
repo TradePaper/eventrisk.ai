@@ -830,3 +830,113 @@ code {
     min-height: 280px;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Series index — lists all three parts of The Financialization of Event Risk.
+   Rendered on the explainer (landing) page and the paper page.
+--------------------------------------------------------------------------- */
+.series-index {
+  max-width: 860px;
+  margin: 3rem auto;
+  padding: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.series-index > h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  margin: 0 0 0.5rem;
+  color: var(--ink);
+}
+
+.series-lede {
+  margin: 0 0 1.5rem;
+  max-width: 640px;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.series-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.series-card {
+  display: block;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+
+.series-card:hover,
+.series-card:focus-visible {
+  border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+
+.series-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-bottom: 0.45rem;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.series-part { color: var(--amber); }
+.series-date { color: var(--ink-soft); letter-spacing: 0.04em; text-transform: none; }
+
+.series-here {
+  color: var(--teal);
+  background: var(--teal-soft);
+  border-radius: 3px;
+  padding: 0.1rem 0.45rem;
+  letter-spacing: 0.06em;
+}
+
+.series-title {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.02rem;
+  line-height: 1.35;
+  color: var(--ink);
+  margin-bottom: 0.4rem;
+}
+
+.series-desc {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: var(--ink-soft);
+  margin-bottom: 0.6rem;
+}
+
+.series-cta {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.06em;
+  color: var(--teal);
+}
+
+.series-byline {
+  margin: 1.1rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  color: var(--ink-soft);
+}
