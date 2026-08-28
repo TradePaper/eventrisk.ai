@@ -940,3 +940,37 @@ code {
   letter-spacing: 0.05em;
   color: var(--ink-soft);
 }
+
+.series-next {
+  max-width: 860px;
+  margin: 0 auto 3rem;
+  padding: 0 1.5rem;
+}
+
+.series-next p {
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+  line-height: 1.6;
+  max-width: 640px;
+  margin: 0 0 0.9rem;
+}
+
+.series-next-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.series-next-links a {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.05em;
+  color: var(--teal);
+  text-decoration: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  padding: 0.45rem 0.9rem;
+  transition: border-color 0.15s ease;
+}
+
+.series-next-links a:hover { border-color: var(--border-strong); }

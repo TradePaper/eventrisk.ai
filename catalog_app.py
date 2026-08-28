@@ -291,8 +291,13 @@ class ContractIn(BaseModel):
 # ---------------------------------------------------------------------------
 
 @app.get("/", response_class=HTMLResponse)
-def index():
-    return RedirectResponse(url="/explainer")
+def index(request: Request):
+    return _serve_page("static/series.html", request)
+
+
+@app.get("/series", response_class=HTMLResponse)
+def series_page(request: Request):
+    return _serve_page("static/series.html", request)
 
 
 @app.get("/explainer", response_class=HTMLResponse)
